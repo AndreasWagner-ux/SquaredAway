@@ -1,2 +1,57 @@
-# SquaredAway
-WoW Forever addon: a small reminder bar that shows if you are Well Fed (with countdown), have armor kits on chest, legs, hands and feet, an agility elixir or scroll active, and a happy hunter pet. Suggests the best food, kit and elixir for your level. Never buys anything.
+# Squared Away [Forever]
+
+A small reminder bar for **WoW Forever**. It shows at a glance whether you are ready for the next fight, and what would be good to have at your current level.
+
+> Early version (alpha). Built and tested for a hunter. Other classes and races will follow.
+
+## What it checks
+
+| Icon | Green check | Yellow question mark | Red cross |
+|---|---|---|---|
+| Food | Well Fed, with minute countdown | | Not Well Fed |
+| Armor kits | Kit on chest, legs, hands and feet | A slot has a weaker kit than you could use | A slot has no kit |
+| Elixir / scroll | Agility elixir or scroll active, with countdown | | None active |
+| Pet (hunters) | Summoned and happy | Content | Unhappy, dead or not summoned |
+
+Hover over an icon to see the best food, kit or elixir/scroll for your level and how many you carry. An agility elixir and an agility scroll do not stack, so only one of them is suggested.
+
+The icons hide in combat. Squared Away never buys or uses anything. It only reminds you.
+
+## How it knows items
+
+Squared Away starts with a small list of item IDs. Names, icons and level requirements come from the game itself, in your client language. It also learns new food, kits and elixirs by itself whenever you hover over an item, visit a vendor or carry something in your bags.
+
+## Installation
+
+1. Download `SquaredAway.zip` from the [Releases](https://github.com/Andreaswagner-ux/SquaredAway/releases) page.
+2. Unzip it into your WoW Forever addon folder, so you get `Interface\AddOns\SquaredAway\SquaredAway.toc`.
+3. Start the game or type `/reload`.
+
+## Usage
+
+- **Move the bar:** left-click and hold an icon, then drag.
+- **Settings:** right-click an icon (show or hide icons, lock the bar, reset the position).
+
+Commands:
+
+| Command | What it does |
+|---|---|
+| `/sqa config` | Open the settings |
+| `/sqa list` | Show what the addon knows and suggests |
+| `/sqa hide food`, `kits`, `boost`, `pet` | Hide an icon (`/sqa show ...` brings it back) |
+| `/sqa lock`, `/sqa unlock` | Stop or allow dragging |
+| `/sqa reset` | Move the bar back to the middle |
+
+## Known limits
+
+- The weaker-kit check compares armor value only.
+- Forever's +XP food is detected by the Well Fed buff name. If your client uses a different name, please open an issue.
+- German client: the food check uses the word "satt" from the tooltip.
+
+## Feedback
+
+Found a bug or have an idea? Please open an [issue](https://github.com/Andreaswagner-ux/SquaredAway/issues).
+
+## License
+
+GPL-3.0-or-later. See `LICENSE`.
