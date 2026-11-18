@@ -31,6 +31,7 @@ Squared Away starts with a small list of item IDs. Names, icons and level requir
 
 - **Move the bar:** left-click and hold an icon, then drag.
 - **Settings:** right-click an icon (show or hide icons, lock the bar, reset the position).
+- **Database:** shift + right-click an icon, the "Database" button in the settings, or `/sqa db`. Lists all known food, armor kits and elixirs/scrolls sorted by level. The current suggestion has a check mark, items for higher levels are greyed out, and your bag count is shown. Hover a row for the item tooltip, shift-click it to link the item in chat.
 
 Commands:
 
@@ -38,6 +39,7 @@ Commands:
 |---|---|
 | `/sqa config` | Open the settings |
 | `/sqa list` | Show what the addon knows and suggests |
+| `/sqa db` | Open the database (`/sqa db food`, `kits` or `boost` opens that list) |
 | `/sqa hide food`, `kits`, `boost`, `pet` | Hide an icon (`/sqa show ...` brings it back) |
 | `/sqa lock`, `/sqa unlock` | Stop or allow dragging |
 | `/sqa reset` | Move the bar back to the middle |

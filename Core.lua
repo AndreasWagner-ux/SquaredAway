@@ -572,8 +572,11 @@ local buttons = {
     { key = "pet",   button = petButton, hunterOnly = true },
 }
 
+local RefreshDB -- database window refresh, set further down
+
 local function Update()
     if not db then return end
+    if RefreshDB then RefreshDB() end
     if InCombatLockdown() or UnitAffectingCombat("player") then
         for _, e in ipairs(buttons) do e.button:Hide() end
         return
@@ -629,7 +632,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(240, 230)
+settings:SetSize(240, 270)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -708,13 +711,342 @@ local function ToggleSettings()
     if settings:IsShown() then settings:Hide() else settings:Show() end
 end
 
--- Hint lines at the bottom of every icon tooltip, and right-click to open
--- the settings.
+----------------------------------------------------------------------
+-- Database window (/sqa db, settings button, shift + right-click an icon)
+-- Lists all known food, kits and elixirs/scrolls sorted by level.
+----------------------------------------------------------------------
+
+local DB_TABS = {
+    { key = "food",  label = "Food",            noun = "food" },
+    { key = "kit",   label = "Armor kits",      noun = "armor kits" },
+    { key = "boost", label = "Elixirs/Scrolls", noun = "elixirs or scrolls" },
+}
+local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS" }
+local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost" }
+local ROW_H = 36
+local LIST_W = 344
+local QualityColor = (C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
+
+local dbTab = "food"
+
+local dbWin = CreateFrame("Frame", "SquaredAwayDatabase", UIParent,
+    BackdropTemplateMixin and "BackdropTemplate" or nil)
+dbWin:SetSize(400, 480)
+dbWin:SetPoint("CENTER")
+dbWin:SetFrameStrata("DIALOG")
+dbWin:SetMovable(true)
+dbWin:EnableMouse(true)
+dbWin:RegisterForDrag("LeftButton")
+dbWin:SetScript("OnDragStart", dbWin.StartMoving)
+dbWin:SetScript("OnDragStop", dbWin.StopMovingOrSizing)
+dbWin:SetClampedToScreen(true)
+if dbWin.SetBackdrop then
+    dbWin:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+end
+dbWin:Hide()
+tinsert(UISpecialFrames, "SquaredAwayDatabase") -- Escape closes it
+
+local dbTitle = dbWin:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+dbTitle:SetPoint("TOP", 0, -18)
+dbTitle:SetText("Squared Away: Database")
+
+local dbClose = CreateFrame("Button", nil, dbWin, "UIPanelCloseButton")
+dbClose:SetPoint("TOPRIGHT", -6, -6)
+
+local tabButtons = {}
+for i, t in ipairs(DB_TABS) do
+    local b = CreateFrame("Button", nil, dbWin, "UIPanelButtonTemplate")
+    b:SetSize(118, 22)
+    b:SetPoint("TOPLEFT", 18 + (i - 1) * 122, -44)
+    b:SetText(t.label)
+    b.key = t.key
+    b:SetScript("OnClick", function()
+        dbTab = t.key
+        RefreshDB()
+    end)
+    tabButtons[i] = b
+end
+
+local scroll = CreateFrame("ScrollFrame", "SquaredAwayDatabaseScroll", dbWin, "UIPanelScrollFrameTemplate")
+scroll:SetPoint("TOPLEFT", 18, -74)
+scroll:SetPoint("BOTTOMRIGHT", -38, 96)
+local content = CreateFrame("Frame", nil, scroll)
+content:SetSize(LIST_W, 1)
+scroll:SetScrollChild(content)
+
+local footer = dbWin:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+footer:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, -10)
+footer:SetWidth(364)
+footer:SetJustifyH("LEFT")
+footer:SetJustifyV("TOP")
+
+local rows = {}
+
+local function GetRow(i)
+    if rows[i] then return rows[i] end
+    local row = CreateFrame("Button", nil, content)
+    row:SetSize(LIST_W, ROW_H)
+    row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
+
+    row.bg = row:CreateTexture(nil, "BACKGROUND")
+    row.bg:SetAllPoints()
+    row.bg:SetColorTexture(1, 0.82, 0, 0.12)
+    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(30, 30)
+    row.icon:SetPoint("LEFT", 2, 0)
+
+    row.mark = row:CreateTexture(nil, "OVERLAY")
+    row.mark:SetSize(16, 16)
+    row.mark:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 4, -4)
+    row.mark:SetTexture(CHECK)
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -1)
+    row.name:SetWidth(LIST_W - 150)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+
+    row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.detail:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 1)
+    row.detail:SetWidth(LIST_W - 120)
+    row.detail:SetJustifyH("LEFT")
+    row.detail:SetWordWrap(false)
+
+    row.level = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.level:SetPoint("TOPRIGHT", -6, -5)
+    row.level:SetJustifyH("RIGHT")
+
+    row.count = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.count:SetPoint("BOTTOMRIGHT", -6, 5)
+    row.count:SetJustifyH("RIGHT")
+    row.count:SetTextColor(0.5, 1, 0.5)
+
+    row:RegisterForClicks("LeftButtonUp")
+    row:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetHyperlink("item:" .. self.id)
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
+        if IsShiftKeyDown() then
+            local _, link = GetItemInfoFn(self.id)
+            if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+        end
+    end)
+
+    rows[i] = row
+    return row
+end
+
+local function ReqLevel(id, info)
+    local _, _, _, _, minLevel = GetItemInfoFn(id)
+    return minLevel or info.lvl or 0
+end
+
+local FOOD_WORDS = {
+    [3] = "agility or attack power",
+    [2] = "stamina or crit",
+    [1] = "intellect or armor",
+    [0] = "not useful for hunters",
+}
+
+-- Short second line for a row, and whether the item is useful for you.
+local function RowDetail(kind, id, info)
+    if kind == "food" then
+        local score = FoodScore(id)
+        return FOOD_WORDS[score] or "", score > 0
+    elseif kind == "kit" then
+        if not KitUseful(id) then return "spell power, not for hunters", false end
+        local parts = {}
+        local armor = KitArmor(id)
+        if armor then parts[#parts + 1] = "+" .. armor .. " armor" end
+        local minIlvl = KitMinIlvl(id)
+        if minIlvl > 0 then parts[#parts + 1] = "items of level " .. minIlvl .. "+" end
+        return table.concat(parts, ", "), true
+    else
+        local amount = BoostAmount(id)
+        local sub = info.sub == "scroll" and "scroll" or "elixir"
+        return (amount > 0 and ("+" .. amount .. " agility, " .. sub) or sub), true
+    end
+end
+
+-- Items that are suggested right now (for kits: the best kit per slot).
+local function SuggestedSet(kind)
+    local set = {}
+    if kind == "food" then
+        local id = Best("food")
+        if id then set[id] = true end
+    elseif kind == "kit" then
+        local _, _, perSlot = KitStatus()
+        for key, v in pairs(perSlot) do
+            if not key:find("#", 1, true) then set[v] = true end
+        end
+        if not next(set) then
+            local id = Best("kit")
+            if id then set[id] = true end
+        end
+    else
+        local id = BestBoost()
+        if id then set[id] = true end
+    end
+    return set
+end
+
+-- "No new food known for levels 21-30, 46-50." in steps of 5 levels.
+local function GapText(levels, noun)
+    local maxLevel = (GetMaxPlayerLevel and GetMaxPlayerLevel()) or 60
+    local ranges, from, to = {}, nil, nil
+    for start = 1, maxLevel, 5 do
+        local stop = math.min(start + 4, maxLevel)
+        local found = false
+        for lvl = start, stop do
+            if levels[lvl] then found = true break end
+        end
+        if found then
+            if from then
+                ranges[#ranges + 1] = from .. "-" .. to
+                from = nil
+            end
+        else
+            from = from or start
+            to = stop
+        end
+    end
+    if from then ranges[#ranges + 1] = from .. "-" .. to end
+    if #ranges == 0 then return nil end
+    return "No new " .. noun .. " known for levels " .. table.concat(ranges, ", ") .. "."
+end
+
+RefreshDB = function()
+    if not db or not dbWin:IsShown() then return end
+
+    local tab = DB_TABS[1]
+    for _, t in ipairs(DB_TABS) do
+        if t.key == dbTab then tab = t end
+    end
+    for _, b in ipairs(tabButtons) do
+        if b.key == dbTab then b:LockHighlight() else b:UnlockHighlight() end
+    end
+
+    local list = {}
+    for id, info in pairs(db.items) do
+        if info and info.kind == dbTab then
+            list[#list + 1] = {
+                id = id, info = info, lvl = ReqLevel(id, info),
+                name = (GetItemInfoFn(id)) or ("item " .. id),
+            }
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.lvl ~= b.lvl then return a.lvl < b.lvl end
+        return a.name < b.name
+    end)
+
+    local level = UnitLevel("player")
+    local suggested = SuggestedSet(dbTab)
+    local levels, later = {}, 0
+
+    for i, e in ipairs(list) do
+        local row = GetRow(i)
+        row.id = e.id
+        row.icon:SetTexture(GetItemIconFn(e.id) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        row.name:SetText(e.name)
+        local _, _, quality = GetItemInfoFn(e.id)
+        local r, g, bl = 1, 1, 1
+        if quality and QualityColor then r, g, bl = QualityColor(quality) end
+        row.name:SetTextColor(r or 1, g or 1, bl or 1)
+
+        local detail, useful = RowDetail(dbTab, e.id, e.info)
+        row.detail:SetText(detail)
+        if useful then levels[math.max(1, e.lvl)] = true end
+
+        if e.lvl > level then
+            row.level:SetText("from level " .. e.lvl)
+            later = later + 1
+        elseif e.lvl <= 1 then
+            row.level:SetText("any level")
+        else
+            row.level:SetText("level " .. e.lvl)
+        end
+
+        local count = GetItemCountFn(e.id) or 0
+        row.count:SetText(count > 0 and (count .. " in bags") or "")
+
+        local isSuggested = suggested[e.id] and true or false
+        row.mark:SetShown(isSuggested)
+        row.bg:SetShown(isSuggested)
+        row:SetAlpha((e.lvl > level or not useful) and 0.45 or 1)
+        row:Show()
+    end
+    for i = #list + 1, #rows do rows[i]:Hide() end
+    content:SetHeight(math.max(1, #list * ROW_H))
+
+    local notes = {}
+    if #list == 0 then
+        notes[#notes + 1] = "Nothing known yet. Hover over items or visit a vendor."
+    else
+        notes[#notes + 1] = #list .. " known, " .. (#list - later)
+            .. " usable at your level. Check mark = current suggestion."
+    end
+    local gap = GapText(levels, tab.noun)
+    if gap then notes[#notes + 1] = gap end
+    local notLoaded = 0
+    for _, id in ipairs(ns[DB_SEEDS[dbTab]]) do
+        if db.items[id] == nil then notLoaded = notLoaded + 1 end
+    end
+    if notLoaded > 0 then
+        notes[#notes + 1] = notLoaded .. " starter items not loaded yet. They appear once the game sends them."
+    end
+    notes[#notes + 1] = "Shift-click a row to link the item in chat."
+    footer:SetText(table.concat(notes, "\n"))
+end
+
+local function OpenDB(tab)
+    if tab then dbTab = tab end
+    -- ask the game again for starter items it has not sent yet
+    for _, key in pairs(DB_SEEDS) do
+        for _, id in ipairs(ns[key]) do
+            if db.items[id] == nil then Classify(id) end
+        end
+    end
+    dbWin:Show()
+    RefreshDB()
+end
+
+local function ToggleDB(tab)
+    if dbWin:IsShown() and (not tab or tab == dbTab) then
+        dbWin:Hide()
+    else
+        OpenDB(tab)
+    end
+end
+
+local dbBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
+dbBtn:SetSize(140, 22)
+dbBtn:SetPoint("BOTTOM", resetBtn, "TOP", 0, 6)
+dbBtn:SetText("Database")
+dbBtn:SetScript("OnClick", function()
+    settings:Hide()
+    OpenDB()
+end)
+
+-- Hint lines at the bottom of every icon tooltip. Right-click opens the
+-- settings, shift + right-click the database at that icon's list.
 for _, e in ipairs(buttons) do
     local b = e.button
     b:RegisterForClicks("RightButtonUp")
     b:SetScript("OnClick", function(_, mouse)
-        if mouse == "RightButton" then ToggleSettings() end
+        if mouse == "RightButton" then
+            if IsShiftKeyDown() then ToggleDB(ICON_TAB[e.key]) else ToggleSettings() end
+        end
     end)
     b:HookScript("OnEnter", function()
         GameTooltip:AddLine(" ")
@@ -724,6 +1056,7 @@ for _, e in ipairs(buttons) do
             GameTooltip:AddLine("Left-click and hold to move the bar", 0.6, 0.6, 0.6)
         end
         GameTooltip:AddLine("Right-click for settings", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine("Shift + right-click for the database", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
 end
@@ -889,6 +1222,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print("position reset.")
     elseif cmd == "config" or cmd == "settings" then
         ToggleSettings()
+    elseif cmd == "db" or cmd == "database" then
+        ToggleDB(ICON_TAB[arg])
     elseif cmd == "hide" or cmd == "show" then
         if TOGGLE_KEYS[arg] then
             db.hidden[arg] = (cmd == "hide") or nil
@@ -919,6 +1254,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print("commands:")
         Print("  /sqa config  open the settings (or right-click an icon)")
         Print("  /sqa list    what I know and suggest")
+        Print("  /sqa db      database of known food, kits, elixirs and scrolls")
+        Print("               (/sqa db food | kits | boost opens that list)")
         Print("  /sqa hide | show food | kits | boost | pet")
         Print("  /sqa lock | unlock    stop or allow dragging")
         Print("  /sqa reset   move icons back to the middle")
