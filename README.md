@@ -23,7 +23,7 @@ Squared Away starts with a small list of item IDs. Names, icons and level requir
 
 ## Installation
 
-1. Download `SquaredAway.zip` from the [Releases](https://github.com/Andreaswagner-ux/SquaredAway/releases) page.
+1. Download `SquaredAway.zip` from the [Releases](https://github.com/AndreasWagner-ux/SquaredAway/releases) page.
 2. Unzip it into your WoW Forever addon folder, so you get `Interface\AddOns\SquaredAway\SquaredAway.toc`.
 3. Start the game or type `/reload`.
 
@@ -50,7 +50,7 @@ Commands:
 
 ## Feedback
 
-Found a bug or have an idea? Please open an [issue](https://github.com/Andreaswagner-ux/SquaredAway/issues).
+Found a bug or have an idea? Please open an [issue](https://github.com/AndreasWagner-ux/SquaredAway/issues).
 
 ## License
 

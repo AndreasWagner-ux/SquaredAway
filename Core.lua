@@ -165,18 +165,64 @@ local function ScanMerchant()
     end
 end
 
+-- How useful a Well Fed food is for a hunter, from its tooltip:
+-- 3 agility or attack power, 2 stamina or crit, 1 intellect or armor,
+-- 0 everything else (strength, spirit, spell power, healing, fishing...).
+-- Foods scoring 0 are never suggested.
+local FOOD_STATS = {
+    { 3, { "agility", "beweglichkeit", "attack power", "angriffskraft" } },
+    { 2, { "stamina", "ausdauer", "critical", "kritische" } },
+    { 1, { "intellect", "intelligenz", "armor", "rüstung" } },
+}
+
+local function FoodScore(id)
+    local info = db.items[id]
+    if not info then return 0 end
+    if info.score then return info.score end
+    local text = TooltipText(id)
+    if not text then return 0 end
+    -- only look at the part after "well fed" / "satt", where the buff is described
+    local buff = text:match("well fed(.*)") or text:match("%f[%a]satt%f[%A](.*)") or text
+    local score = 0
+    for _, group in ipairs(FOOD_STATS) do
+        for _, word in ipairs(group[2]) do
+            if buff:find(word, 1, true) then score = math.max(score, group[1]) end
+        end
+    end
+    info.score = score
+    return score
+end
+
+-- Spell power kits (Mystic) are no use to a hunter.
+local function KitUseful(id)
+    local info = db.items[id]
+    if not info then return false end
+    if info.caster == nil then
+        local text = TooltipText(id)
+        if not text then return true end
+        info.caster = (text:find("spell power", 1, true) or text:find("spell damage", 1, true)
+            or text:find("zaubermacht", 1, true) or text:find("zauberschaden", 1, true)) and true or false
+    end
+    return not (isHunter and info.caster)
+end
+
 -- Best known item of a kind (and optional sub kind) usable at your level.
 local function Best(kind, sub)
     local level = UnitLevel("player")
-    local bestId, bestLvl, bestIlvl
+    local bestId, bestLvl, bestScore, bestIlvl
     for id, info in pairs(db.items) do
         if info and info.kind == kind and (not sub or info.sub == sub) then
             local _, _, _, ilvl, minLevel = GetItemInfoFn(id)
             minLevel = minLevel or info.lvl or 0
             ilvl = ilvl or info.ilvl or 0
-            if minLevel <= level then
-                if not bestId or minLevel > bestLvl or (minLevel == bestLvl and ilvl > bestIlvl) then
-                    bestId, bestLvl, bestIlvl = id, minLevel, ilvl
+            local score = 1
+            if kind == "food" then score = FoodScore(id) end
+            if kind == "kit" and not KitUseful(id) then score = 0 end
+            if minLevel <= level and score > 0 then
+                if not bestId or minLevel > bestLvl
+                    or (minLevel == bestLvl and (score > bestScore
+                    or (score == bestScore and ilvl > bestIlvl))) then
+                    bestId, bestLvl, bestScore, bestIlvl = id, minLevel, score, ilvl
                 end
             end
         end
@@ -214,27 +260,63 @@ local function EquippedKitArmor(slot)
     return tonumber(text:match("%(%+(%d+) armor%)") or text:match("%(%+(%d+) rüstung%)"))
 end
 
--- Returns two lists of slot labels: no kit at all, and a kit weaker than
--- the best one you can use.
-local function KitStatus()
-    local missing, weaker = {}, {}
-    local best = Best("kit")
-    local bestArmor = best and KitArmor(best)
-    for _, s in ipairs(ns.KIT_SLOTS) do
-        local link = GetInventoryItemLink("player", s.slot)
-        if link then
-            local enchant = tonumber(link:match("item:%-?%d+:(%-?%d*)")) or 0
-            if enchant == 0 then
-                missing[#missing + 1] = s.label
-            elseif bestArmor then
-                local current = EquippedKitArmor(s.slot)
-                if current and current < bestArmor then
-                    weaker[#weaker + 1] = s.label .. " (+" .. current .. ")"
+-- Minimum item level a kit can be put on (0 = any). Known values come from
+-- Data.lua, others are read from the tooltip.
+local function KitMinIlvl(id)
+    if ns.KIT_MIN_ILVL[id] then return ns.KIT_MIN_ILVL[id] end
+    local info = db.items[id]
+    if not info then return 0 end
+    if info.minIlvl == nil then
+        local text = TooltipText(id)
+        if not text then return 0 end
+        info.minIlvl = tonumber(text:match("items? of level (%d+)") or text:match("items? level (%d+)")
+            or text:match("item level (%d+)") or text:match("gegenstände.-stufe (%d+)")) or 0
+    end
+    return info.minIlvl
+end
+
+-- Best kit you can use on an item of the given item level.
+local function BestKitFor(itemLevel)
+    local level = UnitLevel("player")
+    local bestId, bestArmor, bestLvl
+    for id, info in pairs(db.items) do
+        if info and info.kind == "kit" and KitUseful(id) then
+            local _, _, _, _, minLevel = GetItemInfoFn(id)
+            minLevel = minLevel or info.lvl or 0
+            local armor = KitArmor(id) or 0
+            if minLevel <= level and KitMinIlvl(id) <= (itemLevel or 0) then
+                if not bestId or armor > bestArmor or (armor == bestArmor and minLevel > bestLvl) then
+                    bestId, bestArmor, bestLvl = id, armor, minLevel
                 end
             end
         end
     end
-    return missing, weaker
+    return bestId, bestArmor
+end
+
+-- Returns three things: slot labels with no kit, slot labels with a weaker
+-- kit than the best one that fits that item, and the best kit per slot label.
+local function KitStatus()
+    local missing, weaker, perSlot = {}, {}, {}
+    for _, s in ipairs(ns.KIT_SLOTS) do
+        local link = GetInventoryItemLink("player", s.slot)
+        if link then
+            local _, _, _, itemLevel = GetItemInfoFn(link)
+            local best, bestArmor = BestKitFor(itemLevel)
+            perSlot[s.label] = best
+            local enchant = tonumber(link:match("item:%-?%d+:(%-?%d*)")) or 0
+            if enchant == 0 then
+                missing[#missing + 1] = s.label
+            elseif best and bestArmor and bestArmor > 0 then
+                local current = EquippedKitArmor(s.slot)
+                if current and current < bestArmor then
+                    weaker[#weaker + 1] = s.label
+                    perSlot[s.label .. "#current"] = current
+                end
+            end
+        end
+    end
+    return missing, weaker, perSlot
 end
 
 ----------------------------------------------------------------------
@@ -263,7 +345,8 @@ local function BoostAmount(id)
     if info.amount then return info.amount end
     local text = TooltipText(id)
     if not text then return 0 end
-    local amount = tonumber(text:match("agility by (%d+)") or text:match("beweglichkeit um (%d+)")
+    local amount = tonumber(text:match("agility by (%d+)") or text:match("agility.-by (%d+)")
+        or text:match("beweglichkeit um (%d+)") or text:match("beweglichkeit.-um (%d+)")
         or text:match("(%d+) agility") or text:match("(%d+) beweglichkeit"))
     info.amount = amount
     return amount or 0
@@ -417,26 +500,31 @@ end)
 
 kitButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-    local missing, weaker = KitStatus()
+    local missing, weaker, perSlot = KitStatus()
     if #missing == 0 and #weaker == 0 then
         GameTooltip:AddLine("Armor kits applied", 0.4, 1, 0.4)
     end
     if #missing > 0 then
         GameTooltip:AddLine("Armor kit missing:", 1, 0.4, 0.4)
         for _, label in ipairs(missing) do
-            GameTooltip:AddLine("  " .. label, 1, 0.4, 0.4)
+            local id = perSlot[label]
+            GameTooltip:AddDoubleLine("  " .. label, id and ItemText(id) or "no kit known yet",
+                1, 0.4, 0.4, 1, 1, 1)
         end
     end
     if #weaker > 0 then
         GameTooltip:AddLine("Weaker kit than you could use:", 1, 0.82, 0)
         for _, label in ipairs(weaker) do
-            GameTooltip:AddLine("  " .. label, 1, 0.82, 0)
+            local id = perSlot[label]
+            GameTooltip:AddDoubleLine("  " .. label .. " (+" .. perSlot[label .. "#current"] .. ")",
+                ItemText(id) .. " (+" .. (KitArmor(id) or "?") .. ")", 1, 0.82, 0, 1, 1, 1)
         end
     end
-    local best = Best("kit")
-    AddSuggestion(best)
-    local armor = best and KitArmor(best)
-    if armor then GameTooltip:AddLine("(+" .. armor .. " armor)", 0.7, 0.7, 0.7) end
+    if #missing == 0 and #weaker == 0 then
+        local best = Best("kit")
+        AddSuggestion(best, best and "Best kit at your level:")
+    end
+    GameTooltip:AddLine("Some kits only fit items of a minimum item level.", 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
 end)
 

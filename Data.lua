@@ -2,22 +2,45 @@
 -- Only item IDs live here. Names, icons and level requirements come from the
 -- game itself (in your client language), so nothing here goes out of date.
 -- Every ID is checked in game: an ID that turns out not to be Well Fed food,
--- an armor kit or an agility elixir/scroll is ignored. New items are learned automatically when you
--- hover over them, see them at a vendor or carry them in your bags.
+-- an armor kit or an agility elixir/scroll is ignored. New items are learned
+-- automatically when you hover over them, see them at a vendor or carry them
+-- in your bags.
 
 local ADDON, ns = ...
 
--- Armor kits (leatherworking). Forever adds new ones; those are learned in game.
+-- Armor kits (leatherworking).
 ns.SEED_KITS = {
+    -- Classic kits (some changed in Forever)
     2304,   -- Light Armor Kit
     2313,   -- Medium Armor Kit
     4265,   -- Heavy Armor Kit
     8173,   -- Thick Armor Kit
     15564,  -- Rugged Armor Kit
+    18251,  -- Core Armor Kit
+    -- New in Forever: Forceful (attack power) and Mystic (spell power)
+    252437, -- Forceful Medium Armor Kit
+    252436, -- Mystic Medium Armor Kit
+    252453, -- Forceful Heavy Armor Kit
+    252452, -- Mystic Heavy Armor Kit
+    252463, -- Forceful Thick Armor Kit
+    252462, -- Mystic Thick Armor Kit
+    252488, -- Forceful Rugged Armor Kit
+    252487, -- Mystic Rugged Armor Kit
+    279258, -- Wild Leather Armor Kit
 }
 
--- Cooked food that may give Well Fed (classic IDs, checked in game).
+-- Minimum item level of the gear a kit can be put on (Forever kits).
+-- Kits not listed here are read from their tooltip.
+ns.KIT_MIN_ILVL = {
+    [252453] = 15, [252452] = 15,  -- Heavy
+    [252463] = 25, [252462] = 25,  -- Thick
+    [252488] = 35, [252487] = 35,  -- Rugged
+    [279258] = 45,                 -- Wild Leather
+}
+
+-- Cooked food that may give Well Fed (checked in game).
 ns.SEED_FOOD = {
+    -- Classic
     2680,   -- Spiced Wolf Meat
     2684,   -- Coyote Steak
     6888,   -- Herb Baked Egg
@@ -37,6 +60,17 @@ ns.SEED_FOOD = {
     3729,   -- Soothing Turtle Bisque
     12209,  -- Lean Wolf Steak
     12210,  -- Roast Raptor
+    13928,  -- Grilled Squid (crit)
+    13934,  -- Mightfish Steak (attack power)
+    21023,  -- Dirge's Kickin' Chimaerok Chops (stamina)
+    -- New in Forever
+    263509, -- Skywall Souffle (stamina)
+    250080, -- Breakfast Omelette (stamina)
+    250078, -- Giant Scrambled Eggs (stamina)
+    250068, -- Savory Turtle Stew (stamina)
+    286152, -- Plated Armorfish (armor)
+    250069, -- Flank au Poivre (agility)
+    250072, -- Swiftstrike Steak (agility)
 }
 
 -- Agility elixirs and scrolls (for hunters; checked in game).
@@ -45,6 +79,8 @@ ns.SEED_BOOSTS = {
     3390,   -- Elixir of Lesser Agility
     8949,   -- Elixir of Agility
     9187,   -- Elixir of Greater Agility
+    13452,  -- Elixir of the Mongoose
+    250328, -- Elixir of Cunning (new in Forever)
     3012,   -- Scroll of Agility
     1477,   -- Scroll of Agility II
     4425,   -- Scroll of Agility III
