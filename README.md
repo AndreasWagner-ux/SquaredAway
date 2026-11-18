@@ -13,6 +13,8 @@ A small reminder bar for **WoW Forever**. It shows at a glance whether you are r
 | Elixir / scroll | Agility elixir or scroll active, with countdown | | None active |
 | Pet (hunters) | Summoned and happy | Content | Unhappy, dead or not summoned |
 
+**Aspect reminder (hunters):** while no aspect is active, a flashing "No aspect active!" appears in the middle of the screen, in and out of combat, until you choose one. It stays away while you are dead or on a flight path, and before you have learned your first aspect. Switch it off in the settings or with `/sqa hide aspect`.
+
 Hover over an icon to see the best food, kit or elixir/scroll for your level and how many you carry. An agility elixir and an agility scroll do not stack, so only one of them is suggested.
 
 The icons hide in combat. Squared Away never buys or uses anything. It only reminds you.
@@ -40,7 +42,7 @@ Commands:
 | `/sqa config` | Open the settings |
 | `/sqa list` | Show what the addon knows and suggests |
 | `/sqa db` | Open the database (`/sqa db food`, `kits` or `boost` opens that list) |
-| `/sqa hide food`, `kits`, `boost`, `pet` | Hide an icon (`/sqa show ...` brings it back) |
+| `/sqa hide food`, `kits`, `boost`, `pet`, `aspect` | Hide an icon or the aspect reminder (`/sqa show ...` brings it back) |
 | `/sqa lock`, `/sqa unlock` | Stop or allow dragging |
 | `/sqa reset` | Move the bar back to the middle |
 

@@ -572,10 +572,88 @@ local buttons = {
     { key = "pet",   button = petButton, hunterOnly = true },
 }
 
+----------------------------------------------------------------------
+-- Aspect reminder (hunters): flashing text in the middle of the screen
+-- while no aspect is active. Works in and out of combat.
+----------------------------------------------------------------------
+
+local aspectNames
+
+local function SpellName(id)
+    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+    if GetSpellInfo then return (GetSpellInfo(id)) end
+end
+
+local function AspectNames()
+    if not aspectNames then
+        aspectNames = {}
+        for _, id in ipairs(ns.ASPECT_SPELLS) do
+            local name = SpellName(id)
+            if name then aspectNames[name] = true end
+        end
+    end
+    return aspectNames
+end
+
+-- Has the player learned at least one aspect?
+local function KnowsAspect()
+    local check = IsPlayerSpell or IsSpellKnown
+    if not check then return true end
+    for _, id in ipairs(ns.ASPECT_SPELLS) do
+        if check(id) then return true end
+    end
+    return false
+end
+
+local function ActiveAspect()
+    local names = AspectNames()
+    return FindBuff(function(name)
+        if not name then return false end
+        if names[name] then return true end
+        local lname = name:lower()
+        return lname:find("^aspect of") or lname:find("^aspekt de")
+    end)
+end
+
+local aspectAlert = CreateFrame("Frame", "SquaredAwayAspectAlert", UIParent)
+aspectAlert:SetSize(500, 60)
+aspectAlert:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+aspectAlert:SetFrameStrata("HIGH")
+aspectAlert:Hide()
+
+local aspectText = aspectAlert:CreateFontString(nil, "OVERLAY")
+aspectText:SetFont(STANDARD_TEXT_FONT, 32, "THICKOUTLINE")
+aspectText:SetPoint("CENTER")
+aspectText:SetTextColor(1, 0.25, 0.1)
+aspectText:SetText("No aspect active!")
+
+local aspectFlash = aspectAlert:CreateAnimationGroup()
+aspectFlash:SetLooping("BOUNCE")
+local aspectFade = aspectFlash:CreateAnimation("Alpha")
+aspectFade:SetFromAlpha(1)
+aspectFade:SetToAlpha(0.15)
+aspectFade:SetDuration(0.6)
+
+local function UpdateAspect()
+    local show = false
+    if db and isHunter and Shown("aspect") and not UnitIsDeadOrGhost("player")
+        and not (UnitOnTaxi and UnitOnTaxi("player")) and KnowsAspect() then
+        show = not ActiveAspect()
+    end
+    if show then
+        aspectAlert:Show()
+        if not aspectFlash:IsPlaying() then aspectFlash:Play() end
+    else
+        aspectFlash:Stop()
+        aspectAlert:Hide()
+    end
+end
+
 local RefreshDB -- database window refresh, set further down
 
 local function Update()
     if not db then return end
+    UpdateAspect()
     if RefreshDB then RefreshDB() end
     if InCombatLockdown() or UnitAffectingCombat("player") then
         for _, e in ipairs(buttons) do e.button:Hide() end
@@ -632,7 +710,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(240, 270)
+settings:SetSize(240, 300)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -687,7 +765,8 @@ AddCheck("Show food", -50, ShowToggle("food"))
 AddCheck("Show armor kits", -76, ShowToggle("kits"))
 AddCheck("Show elixir / scroll", -102, ShowToggle("boost"))
 local petCheck = AddCheck("Show pet", -128, ShowToggle("pet"))
-AddCheck("Lock bar", -160,
+local aspectCheck = AddCheck("Aspect reminder", -154, ShowToggle("aspect"))
+AddCheck("Lock bar", -186,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
 
@@ -705,6 +784,8 @@ settings:SetScript("OnShow", function()
     for _, cb in ipairs(checks) do cb:SetChecked(cb.getter() and true or false) end
     petCheck:SetShown(isHunter)
     petCheck.label:SetShown(isHunter)
+    aspectCheck:SetShown(isHunter)
+    aspectCheck.label:SetShown(isHunter)
 end)
 
 local function ToggleSettings()
@@ -1154,6 +1235,12 @@ events:SetScript("OnEvent", function(self, event, arg1)
         self:RegisterEvent("UNIT_HEALTH")
         self:RegisterEvent("PET_UI_UPDATE")
         pcall(self.RegisterEvent, self, "UNIT_HAPPINESS")
+        self:RegisterEvent("PLAYER_DEAD")
+        self:RegisterEvent("PLAYER_ALIVE")
+        self:RegisterEvent("PLAYER_UNGHOST")
+        self:RegisterEvent("PLAYER_CONTROL_LOST")
+        self:RegisterEvent("PLAYER_CONTROL_GAINED")
+        self:RegisterEvent("SPELLS_CHANGED")
 
         C_Timer.After(5, function()
             last.food, last.kit = Best("food"), Best("kit")
@@ -1201,7 +1288,7 @@ end)
 -- Slash commands
 ----------------------------------------------------------------------
 
-local TOGGLE_KEYS = { food = true, kits = true, boost = true, pet = true }
+local TOGGLE_KEYS = { food = true, kits = true, boost = true, pet = true, aspect = true }
 
 SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
@@ -1227,10 +1314,10 @@ SlashCmdList.SQUAREDAWAY = function(msg)
     elseif cmd == "hide" or cmd == "show" then
         if TOGGLE_KEYS[arg] then
             db.hidden[arg] = (cmd == "hide") or nil
-            Print(arg .. " icon " .. (cmd == "hide" and "hidden." or "shown."))
+            Print(arg .. (arg == "aspect" and " reminder " or " icon ") .. (cmd == "hide" and "hidden." or "shown."))
             Update()
         else
-            Print("use: /sqa " .. cmd .. " food | kits | boost | pet")
+            Print("use: /sqa " .. cmd .. " food | kits | boost | pet | aspect")
         end
     elseif cmd == "list" then
         local counts = { food = 0, kit = 0, boost = 0 }
@@ -1249,14 +1336,17 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print("weaker kits: " .. (#weaker > 0 and table.concat(weaker, ", ") or "none"))
         Print("Well Fed: " .. (IsWellFed() and "yes" or "no")
             .. ", agility boost: " .. (ActiveBoost() and "yes" or "no"))
-        if isHunter then Print("pet: " .. select(2, PetStatus())) end
+        if isHunter then
+            Print("pet: " .. select(2, PetStatus()))
+            Print("aspect: " .. (ActiveAspect() and "active" or (KnowsAspect() and "none active" or "none learned yet")))
+        end
     else
         Print("commands:")
         Print("  /sqa config  open the settings (or right-click an icon)")
         Print("  /sqa list    what I know and suggest")
         Print("  /sqa db      database of known food, kits, elixirs and scrolls")
         Print("               (/sqa db food | kits | boost opens that list)")
-        Print("  /sqa hide | show food | kits | boost | pet")
+        Print("  /sqa hide | show food | kits | boost | pet | aspect")
         Print("  /sqa lock | unlock    stop or allow dragging")
         Print("  /sqa reset   move icons back to the middle")
     end

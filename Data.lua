@@ -99,6 +99,18 @@ ns.WELL_FED_ICONS = {
     ["interface\\icons\\spell_misc_food"] = true,
 }
 
+-- Hunter aspects (rank 1 spell IDs). Their names come from the game in your
+-- client language. Any buff starting with "Aspect of" / "Aspekt de" also
+-- counts, so new Forever aspects are caught too.
+ns.ASPECT_SPELLS = {
+    13163, -- Aspect of the Monkey
+    13165, -- Aspect of the Hawk
+    5118,  -- Aspect of the Cheetah
+    13159, -- Aspect of the Pack
+    13161, -- Aspect of the Beast
+    20043, -- Aspect of the Wild
+}
+
 -- Equipment slots that take an armor kit.
 ns.KIT_SLOTS = {
     { slot = 5,  label = INVTYPE_CHEST or "Chest" },
