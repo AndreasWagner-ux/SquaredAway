@@ -24,6 +24,14 @@ Hover over an icon to see the best food, kit or elixir/scroll for your level and
 
 The icons hide in combat. Squared Away never buys or uses anything. It only reminds you.
 
+## Languages
+
+Squared Away shows its texts in English or German, depending on your client language. Item names, icons and tooltips always come from the game in your language.
+
+Items and buffs are recognised by their item and spell IDs from ForeverDB, so the checks work in every client language. Only items the addon learns by itself (not in the ForeverDB lists) are read from their tooltip text, which works in English and German.
+
+Want another language? Copy the German block in `Locales.lua`, translate the right side, and open a pull request or an issue.
+
 ## How it knows items
 
 Squared Away starts with a list of item IDs from ForeverDB.net (food, armor kits, elixirs and scrolls). Names, icons and level requirements come from the game itself, in your client language. It also learns new food, kits and elixirs by itself whenever you hover over an item, visit a vendor or carry something in your bags.

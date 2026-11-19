@@ -9,12 +9,21 @@
 -- Never buys or uses anything.
 
 local ADDON, ns = ...
+local L = ns.L or setmetatable({}, { __index = function(_, k) return k end })
 
--- ItemData.lua is generated; keep the addon working if a list is missing.
-for _, key in ipairs({ "SEED_FOOD", "SEED_KITS", "SEED_BOOSTS", "SEED_SCROLLS", "KIT_MIN_ILVL" }) do
-    ns[key] = ns[key] or {}
+-- ItemData.lua (generated from ForeverDB) says what each known item is.
+-- Build the per-kind ID lists from it.
+ns.ITEMS = ns.ITEMS or {}
+local SEED_KEY = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS", scroll = "SEED_SCROLLS" }
+for _, key in pairs(SEED_KEY) do ns[key] = {} end
+ns.KIT_MIN_ILVL = {}
+for _, st in ipairs(ns.SCROLL_STATS) do st.label = L[st.label] end
+for id, info in pairs(ns.ITEMS) do
+    local key = SEED_KEY[info.kind]
+    if key then table.insert(ns[key], id) end
+    if info.minIlvl and info.minIlvl > 0 then ns.KIT_MIN_ILVL[id] = info.minIlvl end
 end
-local CREDIT = "Data from ForeverDB.net (https://foreverdb.net)"
+local CREDIT = L["Data from ForeverDB.net (https://foreverdb.net)"]
 
 local PREFIX = "|cff7fd4ffSquared Away|r: "
 local ICON_SIZE = 36
@@ -36,6 +45,12 @@ local isHunter = false
 
 local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. msg)
+end
+
+-- Spell name in the client language.
+local function SpellName(id)
+    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+    if GetSpellInfo then return (GetSpellInfo(id)) end
 end
 
 ----------------------------------------------------------------------
@@ -75,26 +90,33 @@ end
 -- Buffs
 ----------------------------------------------------------------------
 
--- Calls fn(name, icon, expirationTime) for each buff; stops and returns
+-- Calls fn(name, icon, spellId) for each buff; stops and returns
 -- true, expirationTime, name when fn returns true.
 local function FindBuff(fn)
     if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
         for i = 1, 40 do
             local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
             if not aura then break end
-            if fn(aura.name, aura.icon) then return true, aura.expirationTime, aura.name end
+            if fn(aura.name, aura.icon, aura.spellId) then return true, aura.expirationTime, aura.name end
         end
     else
         for i = 1, 40 do
-            local name, icon, _, _, _, expirationTime = UnitBuff("player", i)
+            local name, icon, _, _, _, expirationTime, _, _, _, spellId = UnitBuff("player", i)
             if not name then break end
-            if fn(name, icon) then return true, expirationTime, name end
+            if fn(name, icon, spellId) then return true, expirationTime, name end
         end
     end
     return false
 end
 
 local function IsWellFed()
+    if not ns.wellFedLocal then
+        ns.wellFedLocal = true
+        for _, id in ipairs(ns.WELL_FED_SPELLS or {}) do
+            local n = SpellName(id)
+            if n then ns.WELL_FED_NAMES[n] = true end
+        end
+    end
     return FindBuff(function(name, icon)
         if name and ns.WELL_FED_NAMES[name] then return true end
         if icon then
@@ -251,7 +273,7 @@ end
 
 local function ItemText(id)
     local name, link = GetItemInfoFn(id)
-    return link or name or ("item " .. id)
+    return link or name or (L["item"] .. " " .. id)
 end
 
 ----------------------------------------------------------------------
@@ -344,17 +366,33 @@ end
 
 -- Is an agility elixir or scroll active? Matches the buff against the
 -- spell names of all known boost items.
-local function ActiveBoost()
-    local names = {}
+-- Buff names and spell IDs of all known items of a kind (and stat).
+-- info.spell is the buff spell ID (from ItemData or the game), info.spellName
+-- its name in the client language.
+local function BuffSets(kind, stat)
+    local names, ids = {}, {}
     for id, info in pairs(db.items) do
-        if info and info.kind == "boost" then
-            if not info.spell then
-                info.spell = GetItemSpellFn(id)
+        if info and info.kind == kind and (not stat or info.stat == stat) then
+            if type(info.spell) == "string" then -- saved by an older version
+                info.spellName, info.spell = info.spell, nil
             end
-            if info.spell then names[info.spell] = true end
+            if not info.spellName or not info.spell then
+                local n, sid = GetItemSpellFn(id)
+                info.spellName = info.spellName or n
+                info.spell = info.spell or tonumber(sid)
+            end
+            if info.spell then ids[info.spell] = true end
+            if info.spellName then names[info.spellName] = true end
         end
     end
-    return FindBuff(function(name) return name and names[name] end)
+    return names, ids
+end
+
+local function ActiveBoost()
+    local names, ids = BuffSets("boost")
+    return FindBuff(function(name, _, spellId)
+        return (spellId and ids[spellId]) or (name and names[name])
+    end)
 end
 
 -- Agility an elixir or scroll gives, read from its tooltip.
@@ -396,11 +434,6 @@ end
 -- Agility scrolls stay with the elixirs above, because they block each other.
 ----------------------------------------------------------------------
 
-local function SpellName(id)
-    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
-    if GetSpellInfo then return (GetSpellInfo(id)) end
-end
-
 -- Amount a stat scroll gives, read from its tooltip ("... by 16" / "... um 16").
 local function ScrollAmount(id)
     local info = db.items[id]
@@ -435,14 +468,10 @@ end
 
 -- Is a scroll of this stat active? Returns true, expirationTime.
 local function ActiveScroll(stat)
-    local names = {}
-    for id, info in pairs(db.items) do
-        if info and info.kind == "scroll" and info.stat == stat then
-            if not info.spell then info.spell = GetItemSpellFn(id) end
-            if info.spell then names[info.spell] = true end
-        end
-    end
-    return FindBuff(function(name) return name and names[name] end)
+    local names, ids = BuffSets("scroll", stat)
+    return FindBuff(function(name, _, spellId)
+        return (spellId and ids[spellId]) or (name and names[name])
+    end)
 end
 
 -- Is the stat already covered by a class buff (Fortitude, Arcane Intellect)?
@@ -488,12 +517,12 @@ end
 
 -- Returns "ok" / "warn" / "missing" and a short text.
 local function PetStatus()
-    if not UnitExists("pet") then return "missing", "No pet summoned" end
-    if UnitIsDead("pet") then return "missing", "Your pet is dead" end
+    if not UnitExists("pet") then return "missing", L["No pet summoned"] end
+    if UnitIsDead("pet") then return "missing", L["Your pet is dead"] end
     local happiness = GetPetHappiness and GetPetHappiness()
-    if happiness == 1 then return "missing", "Your pet is unhappy" end
-    if happiness == 2 then return "warn", "Your pet is content" end
-    return "ok", "Your pet is happy"
+    if happiness == 1 then return "missing", L["Your pet is unhappy"] end
+    if happiness == 2 then return "warn", L["Your pet is content"] end
+    return "ok", L["Your pet is happy"]
 end
 
 ----------------------------------------------------------------------
@@ -578,21 +607,21 @@ end)
 local function AddTimeLine(expires)
     local text, left = TimeLeftText(expires)
     if text then
-        GameTooltip:AddLine(text .. (left < 60 and " left" or " min left"), 1, 1, 1)
+        GameTooltip:AddLine((left < 60 and L["%s left"] or L["%s min left"]):format(text), 1, 1, 1)
     end
 end
 
 local function AddSuggestion(id, label)
     if id then
-        GameTooltip:AddLine(label or ("Good at level " .. UnitLevel("player") .. ":"), 1, 1, 1)
+        GameTooltip:AddLine(label or L["Good at level %d:"]:format(UnitLevel("player")), 1, 1, 1)
         GameTooltip:AddLine(ItemText(id))
         local count = GetItemCountFn(id) or 0
         if count > 0 then
-            GameTooltip:AddLine("You have " .. count .. " in your bags.", 0.5, 1, 0.5)
+            GameTooltip:AddLine(L["You have %d in your bags."]:format(count), 0.5, 1, 0.5)
         end
     elseif not label then
-        GameTooltip:AddLine("No suggestion yet.", 1, 1, 1)
-        GameTooltip:AddLine("Hover over items or visit a vendor so I can learn them.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine(L["No suggestion yet."], 1, 1, 1)
+        GameTooltip:AddLine(L["Hover over items or visit a vendor so I can learn them."], 0.7, 0.7, 0.7, true)
     end
 end
 
@@ -600,10 +629,10 @@ foodButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     local fed, expires = IsWellFed()
     if fed then
-        GameTooltip:AddLine("Well Fed", 0.4, 1, 0.4)
+        GameTooltip:AddLine(L["Well Fed"], 0.4, 1, 0.4)
         AddTimeLine(expires)
     else
-        GameTooltip:AddLine("Not Well Fed", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["Not Well Fed"], 1, 0.4, 0.4)
     end
     AddSuggestion(Best("food"))
     GameTooltip:Show()
@@ -613,18 +642,18 @@ kitButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     local missing, weaker, perSlot = KitStatus()
     if #missing == 0 and #weaker == 0 then
-        GameTooltip:AddLine("Armor kits applied", 0.4, 1, 0.4)
+        GameTooltip:AddLine(L["Armor kits applied"], 0.4, 1, 0.4)
     end
     if #missing > 0 then
-        GameTooltip:AddLine("Armor kit missing:", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["Armor kit missing:"], 1, 0.4, 0.4)
         for _, label in ipairs(missing) do
             local id = perSlot[label]
-            GameTooltip:AddDoubleLine("  " .. label, id and ItemText(id) or "no kit known yet",
+            GameTooltip:AddDoubleLine("  " .. label, id and ItemText(id) or L["no kit known yet"],
                 1, 0.4, 0.4, 1, 1, 1)
         end
     end
     if #weaker > 0 then
-        GameTooltip:AddLine("Weaker kit than you could use:", 1, 0.82, 0)
+        GameTooltip:AddLine(L["Weaker kit than you could use:"], 1, 0.82, 0)
         for _, label in ipairs(weaker) do
             local id = perSlot[label]
             GameTooltip:AddDoubleLine("  " .. label .. " (+" .. perSlot[label .. "#current"] .. ")",
@@ -633,9 +662,9 @@ kitButton:SetScript("OnEnter", function(self)
     end
     if #missing == 0 and #weaker == 0 then
         local best = Best("kit")
-        AddSuggestion(best, best and "Best kit at your level:")
+        AddSuggestion(best, best and L["Best kit at your level:"])
     end
-    GameTooltip:AddLine("Some kits only fit items of a minimum item level.", 0.7, 0.7, 0.7, true)
+    GameTooltip:AddLine(L["Some kits only fit items of a minimum item level."], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
 end)
 
@@ -643,13 +672,13 @@ boostButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     local active, expires, name = ActiveBoost()
     if active then
-        GameTooltip:AddLine(name or "Agility boost active", 0.4, 1, 0.4)
+        GameTooltip:AddLine(name or L["Agility boost active"], 0.4, 1, 0.4)
         AddTimeLine(expires)
     else
-        GameTooltip:AddLine("No agility elixir or scroll", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["No agility elixir or scroll"], 1, 0.4, 0.4)
     end
     AddSuggestion(BestBoost())
-    GameTooltip:AddLine("Agility elixir and agility scroll do not stack: use one.", 0.7, 0.7, 0.7, true)
+    GameTooltip:AddLine(L["Agility elixir and agility scroll do not stack: use one."], 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
 end)
 
@@ -658,14 +687,14 @@ scrollButton:SetScript("OnEnter", function(self)
     local list, active = ScrollStatus()
     local r, g, bl = 0.4, 1, 0.4
     if active == 0 then r, g, bl = 1, 0.4, 0.4 elseif active < #list then r, g, bl = 1, 0.82, 0 end
-    GameTooltip:AddLine("Stat scrolls: " .. active .. " of " .. #list .. " active", r, g, bl)
+    GameTooltip:AddLine(L["Stat scrolls: %d of %d active"]:format(active, #list), r, g, bl)
     for _, e in ipairs(list) do
         if e.state == "active" then
             local text = TimeLeftText(e.expires)
-            GameTooltip:AddDoubleLine(e.s.label, "active" .. (text and (", " .. text .. (text:find("s") and "" or " min")) or ""),
+            GameTooltip:AddDoubleLine(e.s.label, text and (text:find("s") and L["active, %s"] or L["active, %s min"]):format(text) or L["active"],
                 1, 1, 1, 0.4, 1, 0.4)
         elseif e.state == "covered" then
-            GameTooltip:AddDoubleLine(e.s.label, "covered by " .. e.buff, 1, 1, 1, 0.4, 1, 0.4)
+            GameTooltip:AddDoubleLine(e.s.label, L["covered by %s"]:format(e.buff), 1, 1, 1, 0.4, 1, 0.4)
         end
     end
     local first = true
@@ -673,23 +702,23 @@ scrollButton:SetScript("OnEnter", function(self)
         if e.state == "missing" then
             if first then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("Missing:", 1, 0.4, 0.4)
+                GameTooltip:AddLine(L["Missing:"], 1, 0.4, 0.4)
                 first = false
             end
             if e.owned then
                 local count = GetItemCountFn(e.best) or 0
-                GameTooltip:AddDoubleLine("  " .. e.s.label, "use " .. ItemText(e.best), 1, 0.4, 0.4, 1, 1, 1)
-                GameTooltip:AddLine("    you have " .. count .. " in your bags", 0.5, 1, 0.5)
+                GameTooltip:AddDoubleLine("  " .. e.s.label, L["use %s"]:format(ItemText(e.best)), 1, 0.4, 0.4, 1, 1, 1)
+                GameTooltip:AddLine("    " .. L["you have %d in your bags"]:format(count), 0.5, 1, 0.5)
             else
-                GameTooltip:AddDoubleLine("  " .. e.s.label, "none in bags", 1, 0.4, 0.4, 0.7, 0.7, 0.7)
+                GameTooltip:AddDoubleLine("  " .. e.s.label, L["none in bags"], 1, 0.4, 0.4, 0.7, 0.7, 0.7)
                 if e.best then
-                    GameTooltip:AddLine("    good at your level: " .. ItemText(e.best), 0.7, 0.7, 0.7)
+                    GameTooltip:AddLine("    " .. L["good at your level: %s"]:format(ItemText(e.best)), 0.7, 0.7, 0.7)
                 end
             end
         end
     end
-    GameTooltip:AddLine("Stamina, Strength, Protection, Intellect.", 0.7, 0.7, 0.7)
-    GameTooltip:AddLine("Agility scrolls are in the agility icon.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine(L["Stamina, Strength, Protection, Intellect."], 0.7, 0.7, 0.7)
+    GameTooltip:AddLine(L["Agility scrolls are in the agility icon."], 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end)
 
@@ -698,10 +727,10 @@ petButton:SetScript("OnEnter", function(self)
     local state, text = PetStatus()
     local r, g, bl = 0.4, 1, 0.4
     if state == "warn" then r, g, bl = 1, 0.82, 0 elseif state == "missing" then r, g, bl = 1, 0.4, 0.4 end
-    if UnitExists("pet") then GameTooltip:AddLine(UnitName("pet") or "Pet", 1, 1, 1) end
+    if UnitExists("pet") then GameTooltip:AddLine(UnitName("pet") or L["Pet"], 1, 1, 1) end
     GameTooltip:AddLine(text, r, g, bl)
     if state ~= "ok" and UnitExists("pet") and not UnitIsDead("pet") then
-        GameTooltip:AddLine("Feed your pet to make it happy.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["Feed your pet to make it happy."], 0.7, 0.7, 0.7)
     end
     GameTooltip:Show()
 end)
@@ -772,7 +801,7 @@ local aspectText = aspectAlert:CreateFontString(nil, "OVERLAY")
 aspectText:SetFont(STANDARD_TEXT_FONT, 32, "THICKOUTLINE")
 aspectText:SetPoint("CENTER")
 aspectText:SetTextColor(1, 0.25, 0.1)
-aspectText:SetText("No aspect active!")
+aspectText:SetText(L["No aspect active!"])
 
 local aspectFlash = aspectAlert:CreateAnimationGroup()
 aspectFlash:SetLooping("BOUNCE")
@@ -871,7 +900,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(260, 360)
+settings:SetSize(330, 360)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -922,20 +951,20 @@ local function ShowToggle(key)
            function(on) db.hidden[key] = (not on) or nil end
 end
 
-AddCheck("Show food", -50, ShowToggle("food"))
-AddCheck("Show armor kits", -76, ShowToggle("kits"))
-AddCheck("Show agility elixir / scroll", -102, ShowToggle("boost"))
-AddCheck("Show stat scrolls", -128, ShowToggle("scrolls"))
-local petCheck = AddCheck("Show pet", -154, ShowToggle("pet"))
-local aspectCheck = AddCheck("Aspect reminder", -180, ShowToggle("aspect"))
-AddCheck("Lock bar", -212,
+AddCheck(L["Show food"], -50, ShowToggle("food"))
+AddCheck(L["Show armor kits"], -76, ShowToggle("kits"))
+AddCheck(L["Show agility elixir / scroll"], -102, ShowToggle("boost"))
+AddCheck(L["Show stat scrolls"], -128, ShowToggle("scrolls"))
+local petCheck = AddCheck(L["Show pet"], -154, ShowToggle("pet"))
+local aspectCheck = AddCheck(L["Aspect reminder"], -180, ShowToggle("aspect"))
+AddCheck(L["Lock bar"], -212,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
 
 local resetBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 resetBtn:SetSize(140, 22)
 resetBtn:SetPoint("BOTTOM", 0, 44)
-resetBtn:SetText("Reset position")
+resetBtn:SetText(L["Reset position"])
 resetBtn:SetScript("OnClick", function()
     db.pos = nil
     frame:ClearAllPoints()
@@ -960,23 +989,23 @@ end
 ----------------------------------------------------------------------
 
 local DB_TABS = {
-    { key = "food",  label = "Food",            noun = "food" },
-    { key = "kit",   label = "Armor kits",      noun = "armor kits" },
-    { key = "boost", label = "Agility", noun = "agility elixirs or scrolls" },
-    { key = "scroll", label = "Stat scrolls", noun = "stat scrolls" },
+    { key = "food",  label = L["Food"],        noun = L["food"] },
+    { key = "kit",   label = L["Armor kits"],  noun = L["armor kits"] },
+    { key = "boost", label = L["Agility"],     noun = L["agility elixirs or scrolls"] },
+    { key = "scroll", label = L["Stat scrolls"], noun = L["stat scrolls"] },
 }
 local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS", scroll = "SEED_SCROLLS" }
 local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost",
     scrolls = "scroll", scroll = "scroll" }
 local ROW_H = 36
-local LIST_W = 344
+local LIST_W = 384
 local QualityColor = (C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
 
 local dbTab = "food"
 
 local dbWin = CreateFrame("Frame", "SquaredAwayDatabase", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-dbWin:SetSize(400, 500)
+dbWin:SetSize(440, 500)
 dbWin:SetPoint("CENTER")
 dbWin:SetFrameStrata("DIALOG")
 dbWin:SetMovable(true)
@@ -998,17 +1027,22 @@ tinsert(UISpecialFrames, "SquaredAwayDatabase") -- Escape closes it
 
 local dbTitle = dbWin:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 dbTitle:SetPoint("TOP", 0, -18)
-dbTitle:SetText("Squared Away: Database")
+dbTitle:SetText(L["Squared Away: Database"])
 
 local dbClose = CreateFrame("Button", nil, dbWin, "UIPanelCloseButton")
 dbClose:SetPoint("TOPRIGHT", -6, -6)
 
 local tabButtons = {}
+local tabX = 18
 for i, t in ipairs(DB_TABS) do
     local b = CreateFrame("Button", nil, dbWin, "UIPanelButtonTemplate")
-    b:SetSize(88, 22)
-    b:SetPoint("TOPLEFT", 18 + (i - 1) * 91, -44)
     b:SetText(t.label)
+    -- width follows the text, so longer translations fit
+    local fs = b.GetFontString and b:GetFontString()
+    local w = math.max(70, math.min(110, ((fs and fs:GetStringWidth()) or 70) + 18))
+    b:SetSize(w, 22)
+    b:SetPoint("TOPLEFT", tabX, -44)
+    tabX = tabX + w + 3
     b.key = t.key
     b:SetScript("OnClick", function()
         dbTab = t.key
@@ -1026,15 +1060,15 @@ scroll:SetScrollChild(content)
 
 local footer = dbWin:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 footer:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, -10)
-footer:SetWidth(364)
+footer:SetWidth(404)
 footer:SetJustifyH("LEFT")
 footer:SetJustifyV("TOP")
 
 local dbCredit = dbWin:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 dbCredit:SetPoint("BOTTOMLEFT", 18, 16)
-dbCredit:SetWidth(364)
+dbCredit:SetWidth(404)
 dbCredit:SetJustifyH("LEFT")
-dbCredit:SetText(CREDIT .. (ns.DATA_BUILD and (", game build " .. ns.DATA_BUILD) or ""))
+dbCredit:SetText(CREDIT .. (ns.DATA_BUILD and (", " .. L["game build %s"]:format(ns.DATA_BUILD)) or ""))
 
 local rows = {}
 
@@ -1103,10 +1137,10 @@ local function ReqLevel(id, info)
 end
 
 local FOOD_WORDS = {
-    [3] = "agility or attack power",
-    [2] = "stamina or crit",
-    [1] = "intellect or armor",
-    [0] = "not useful for hunters",
+    [3] = L["agility or attack power"],
+    [2] = L["stamina or crit"],
+    [1] = L["intellect or armor"],
+    [0] = L["not useful for hunters"],
 }
 
 -- Short second line for a row, and whether the item is useful for you.
@@ -1115,12 +1149,12 @@ local function RowDetail(kind, id, info)
         local score = FoodScore(id)
         return FOOD_WORDS[score] or "", score > 0
     elseif kind == "kit" then
-        if not KitUseful(id) then return "spell power, not for hunters", false end
+        if not KitUseful(id) then return L["spell power, not for hunters"], false end
         local parts = {}
         local armor = KitArmor(id)
-        if armor then parts[#parts + 1] = "+" .. armor .. " armor" end
+        if armor then parts[#parts + 1] = L["+%d armor"]:format(armor) end
         local minIlvl = KitMinIlvl(id)
-        if minIlvl > 0 then parts[#parts + 1] = "items of level " .. minIlvl .. "+" end
+        if minIlvl > 0 then parts[#parts + 1] = L["items of level %d+"]:format(minIlvl) end
         return table.concat(parts, ", "), true
     elseif kind == "scroll" then
         local label = info.stat
@@ -1128,11 +1162,11 @@ local function RowDetail(kind, id, info)
             if s.key == info.stat then label = s.label:lower() end
         end
         local amount = ScrollAmount(id)
-        return (amount > 0 and ("+" .. amount .. " ") or "") .. label .. ", scroll", true
+        return (amount > 0 and ("+" .. amount .. " ") or "") .. label .. ", " .. L["scroll"], true
     else
         local amount = BoostAmount(id)
-        local sub = info.sub == "scroll" and "scroll" or "elixir"
-        return (amount > 0 and ("+" .. amount .. " agility, " .. sub) or sub), true
+        local sub = info.sub == "scroll" and L["scroll"] or L["elixir"]
+        return (amount > 0 and (L["+%d agility"]:format(amount) .. ", " .. sub) or sub), true
     end
 end
 
@@ -1185,7 +1219,7 @@ local function GapText(levels, noun)
     end
     if from then ranges[#ranges + 1] = from .. "-" .. to end
     if #ranges == 0 then return nil end
-    return "No new " .. noun .. " known for levels " .. table.concat(ranges, ", ") .. "."
+    return L["No new %s known for levels %s."]:format(noun, table.concat(ranges, ", "))
 end
 
 RefreshDB = function()
@@ -1204,7 +1238,7 @@ RefreshDB = function()
         if info and info.kind == dbTab then
             list[#list + 1] = {
                 id = id, info = info, lvl = ReqLevel(id, info),
-                name = (GetItemInfoFn(id)) or ("item " .. id),
+                name = (GetItemInfoFn(id)) or (L["item"] .. " " .. id),
             }
         end
     end
@@ -1232,16 +1266,16 @@ RefreshDB = function()
         if useful then levels[math.max(1, e.lvl)] = true end
 
         if e.lvl > level then
-            row.level:SetText("from level " .. e.lvl)
+            row.level:SetText(L["from level %d"]:format(e.lvl))
             later = later + 1
         elseif e.lvl <= 1 then
-            row.level:SetText("any level")
+            row.level:SetText(L["any level"])
         else
-            row.level:SetText("level " .. e.lvl)
+            row.level:SetText(L["level %d"]:format(e.lvl))
         end
 
         local count = GetItemCountFn(e.id) or 0
-        row.count:SetText(count > 0 and (count .. " in bags") or "")
+        row.count:SetText(count > 0 and L["%d in bags"]:format(count) or "")
 
         local isSuggested = suggested[e.id] and true or false
         row.mark:SetShown(isSuggested)
@@ -1254,30 +1288,29 @@ RefreshDB = function()
 
     local notes = {}
     if #list == 0 then
-        notes[#notes + 1] = "Nothing known yet. Hover over items or visit a vendor."
+        notes[#notes + 1] = L["Nothing known yet. Hover over items or visit a vendor."]
     else
-        notes[#notes + 1] = #list .. " known, " .. (#list - later)
-            .. " usable at your level. Check mark = current suggestion."
+        notes[#notes + 1] = L["%d known, %d usable at your level. Check mark = current suggestion."]:format(#list, #list - later)
     end
     local gap = GapText(levels, tab.noun)
     if gap then notes[#notes + 1] = gap end
     local notLoaded = 0
     for _, id in ipairs(ns[DB_SEEDS[dbTab]]) do
-        if db.items[id] == nil then notLoaded = notLoaded + 1 end
+        if not GetItemInfoFn(id) then notLoaded = notLoaded + 1 end
     end
     if notLoaded > 0 then
-        notes[#notes + 1] = notLoaded .. " starter items not loaded yet. They appear once the game sends them."
+        notes[#notes + 1] = L["%d items still loading from the game."]:format(notLoaded)
     end
-    notes[#notes + 1] = "Shift-click a row to link the item in chat."
+    notes[#notes + 1] = L["Shift-click a row to link the item in chat."]
     footer:SetText(table.concat(notes, "\n"))
 end
 
 local function OpenDB(tab)
     if tab then dbTab = tab end
-    -- ask the game again for starter items it has not sent yet
+    -- ask the game again for items it has not sent yet
     for _, key in pairs(DB_SEEDS) do
         for _, id in ipairs(ns[key]) do
-            if db.items[id] == nil then Classify(id) end
+            if not GetItemInfoFn(id) and RequestLoad then RequestLoad(id) end
         end
     end
     dbWin:Show()
@@ -1294,13 +1327,13 @@ end
 
 local settingsCredit = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 settingsCredit:SetPoint("BOTTOM", 0, 18)
-settingsCredit:SetWidth(220)
-settingsCredit:SetText(CREDIT .. (ns.DATA_BUILD and ("\nGame build " .. ns.DATA_BUILD) or ""))
+settingsCredit:SetWidth(290)
+settingsCredit:SetText(CREDIT .. (ns.DATA_BUILD and ("\n" .. L["Game build %s"]:format(ns.DATA_BUILD)) or ""))
 
 local dbBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 dbBtn:SetSize(140, 22)
 dbBtn:SetPoint("BOTTOM", resetBtn, "TOP", 0, 6)
-dbBtn:SetText("Database")
+dbBtn:SetText(L["Database"])
 dbBtn:SetScript("OnClick", function()
     settings:Hide()
     OpenDB()
@@ -1319,12 +1352,12 @@ for _, e in ipairs(buttons) do
     b:HookScript("OnEnter", function()
         GameTooltip:AddLine(" ")
         if db and db.locked then
-            GameTooltip:AddLine("Bar is locked", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["Bar is locked"], 0.6, 0.6, 0.6)
         else
-            GameTooltip:AddLine("Left-click and hold to move the bar", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["Left-click and hold to move the bar"], 0.6, 0.6, 0.6)
         end
-        GameTooltip:AddLine("Right-click for settings", 0.6, 0.6, 0.6)
-        GameTooltip:AddLine("Shift + right-click for the database", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(L["Right-click for settings"], 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(L["Shift + right-click for the database"], 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
 end
@@ -1366,12 +1399,12 @@ local last = {}
 
 local function AnnounceIfChanged()
     local checks = {
-        { "food",  Best("food"),              "best food for your level: " },
-        { "kit",   Best("kit"),               "best armor kit for your level: " },
-        { "boost", BestBoost(),               "best agility elixir or scroll for your level: " },
+        { "food",  Best("food"),  L["best food for your level: %s"] },
+        { "kit",   Best("kit"),   L["best armor kit for your level: %s"] },
+        { "boost", BestBoost(),   L["best agility elixir or scroll for your level: %s"] },
     }
     for _, c in ipairs(checks) do
-        if c[2] and c[2] ~= last[c[1]] then Print(c[3] .. ItemText(c[2])) end
+        if c[2] and c[2] ~= last[c[1]] then Print(c[3]:format(ItemText(c[2]))) end
         last[c[1]] = c[2]
     end
 end
@@ -1403,10 +1436,16 @@ events:SetScript("OnEvent", function(self, event, arg1)
             frame:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
         end
 
-        for _, id in ipairs(ns.SEED_KITS) do Classify(id) end
-        for _, id in ipairs(ns.SEED_FOOD) do Classify(id) end
-        for _, id in ipairs(ns.SEED_BOOSTS) do Classify(id) end
-        for _, id in ipairs(ns.SEED_SCROLLS) do Classify(id) end
+        -- Items from ItemData.lua: their kind and numbers come from the data,
+        -- so no tooltip words are needed (works in every client language).
+        for id, data in pairs(ns.ITEMS) do
+            local info = {}
+            for k, v in pairs(data) do info[k] = v end
+            local old = db.items[id]
+            if type(old) == "table" then info.spellName = old.spellName end
+            db.items[id] = info
+            if RequestLoad then RequestLoad(id) end
+        end
         ScanBags()
         HookTooltips()
 
@@ -1435,7 +1474,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
             last.boost = BestBoost()
             Update()
         end)
-        Print("loaded. Type /sqa for options.")
+        Print(L["loaded. Type /sqa for options."])
 
     elseif event == "UNIT_AURA" or event == "UNIT_INVENTORY_CHANGED" then
         if arg1 == "player" or arg1 == "pet" then QueueUpdate() end
@@ -1451,6 +1490,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
         if id and pending[id] then
             Classify(id)
             QueueUpdate()
+        elseif id and ns.ITEMS[id] then
+            QueueUpdate() -- name and icon of a known item arrived
         end
 
     elseif event == "BAG_UPDATE_DELAYED" then
@@ -1486,15 +1527,15 @@ SlashCmdList.SQUAREDAWAY = function(msg)
 
     if cmd == "lock" then
         db.locked = true
-        Print("icons locked.")
+        Print(L["icons locked."])
     elseif cmd == "unlock" then
         db.locked = false
-        Print("icons unlocked. Drag an icon to move them.")
+        Print(L["icons unlocked. Drag an icon to move them."])
     elseif cmd == "reset" then
         db.pos = nil
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
-        Print("position reset.")
+        Print(L["position reset."])
     elseif cmd == "config" or cmd == "settings" then
         ToggleSettings()
     elseif cmd == "db" or cmd == "database" then
@@ -1502,47 +1543,46 @@ SlashCmdList.SQUAREDAWAY = function(msg)
     elseif cmd == "hide" or cmd == "show" then
         if TOGGLE_KEYS[arg] then
             db.hidden[arg] = (cmd == "hide") or nil
-            Print(arg .. (arg == "aspect" and " reminder " or " icon ") .. (cmd == "hide" and "hidden." or "shown."))
+            Print((cmd == "hide" and L["%s hidden."] or L["%s shown."]):format(arg))
             Update()
         else
-            Print("use: /sqa " .. cmd .. " food | kits | boost | scrolls | pet | aspect")
+            Print(L["use: /sqa %s food | kits | boost | scrolls | pet | aspect"]:format(cmd))
         end
     elseif cmd == "list" then
         local counts = { food = 0, kit = 0, boost = 0, scroll = 0 }
         for _, info in pairs(db.items) do
             if info and counts[info.kind] then counts[info.kind] = counts[info.kind] + 1 end
         end
-        Print("known: " .. counts.food .. " Well Fed foods, " .. counts.kit .. " armor kits, "
-            .. counts.boost .. " agility elixirs/scrolls, " .. counts.scroll .. " stat scrolls.")
+        Print(L["known: %d Well Fed foods, %d armor kits, %d agility elixirs/scrolls, %d stat scrolls."]:format(
+            counts.food, counts.kit, counts.boost, counts.scroll))
         local food, kit = Best("food"), Best("kit")
         local boost = BestBoost()
-        Print("food: " .. (food and ItemText(food) or "none known yet"))
-        Print("armor kit: " .. (kit and ItemText(kit) or "none known yet"))
-        Print("elixir or scroll: " .. (boost and ItemText(boost) or "none known yet"))
+        Print(L["food: %s"]:format(food and ItemText(food) or L["none known yet"]))
+        Print(L["armor kit: %s"]:format(kit and ItemText(kit) or L["none known yet"]))
+        Print(L["agility elixir or scroll: %s"]:format(boost and ItemText(boost) or L["none known yet"]))
         local scrollList, scrollActive = ScrollStatus()
         local missingNames = {}
         for _, e in ipairs(scrollList) do
             if e.state == "missing" then missingNames[#missingNames + 1] = e.s.label end
         end
-        Print("stat scrolls: " .. scrollActive .. "/" .. #scrollList .. " active"
-            .. (#missingNames > 0 and (", missing: " .. table.concat(missingNames, ", ")) or ""))
+        Print(L["stat scrolls: %d/%d active"]:format(scrollActive, #scrollList)
+            .. (#missingNames > 0 and (", " .. L["missing: %s"]:format(table.concat(missingNames, ", "))) or ""))
         local missing, weaker = KitStatus()
-        Print("missing kits: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
-        Print("weaker kits: " .. (#weaker > 0 and table.concat(weaker, ", ") or "none"))
-        Print("Well Fed: " .. (IsWellFed() and "yes" or "no")
-            .. ", agility boost: " .. (ActiveBoost() and "yes" or "no"))
+        Print(L["missing kits: %s"]:format(#missing > 0 and table.concat(missing, ", ") or L["none"]))
+        Print(L["weaker kits: %s"]:format(#weaker > 0 and table.concat(weaker, ", ") or L["none"]))
+        Print(L["Well Fed: %s, agility boost: %s"]:format(IsWellFed() and L["yes"] or L["no"], ActiveBoost() and L["yes"] or L["no"]))
         if isHunter then
-            Print("pet: " .. select(2, PetStatus()))
-            Print("aspect: " .. (ActiveAspect() and "active" or (KnowsAspect() and "none active" or "none learned yet")))
+            Print(L["pet: %s"]:format(select(2, PetStatus())))
+            Print(L["aspect: %s"]:format(ActiveAspect() and L["active"] or (KnowsAspect() and L["none active"] or L["none learned yet"])))
         end
     else
-        Print("commands:")
-        Print("  /sqa config  open the settings (or right-click an icon)")
-        Print("  /sqa list    what I know and suggest")
-        Print("  /sqa db      database of known food, kits, elixirs and scrolls")
-        Print("               (/sqa db food | kits | boost | scrolls opens that list)")
-        Print("  /sqa hide | show food | kits | boost | scrolls | pet | aspect")
-        Print("  /sqa lock | unlock    stop or allow dragging")
-        Print("  /sqa reset   move icons back to the middle")
+        Print(L["commands:"])
+        Print(L["  /sqa config  open the settings (or right-click an icon)"])
+        Print(L["  /sqa list    what I know and suggest"])
+        Print(L["  /sqa db      database of known food, kits, elixirs and scrolls"])
+        Print(L["               (/sqa db food | kits | boost | scrolls opens that list)"])
+        Print(L["  /sqa hide | show food | kits | boost | scrolls | pet | aspect"])
+        Print(L["  /sqa lock | unlock    stop or allow dragging"])
+        Print(L["  /sqa reset   move icons back to the middle"])
     end
 end

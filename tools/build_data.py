@@ -9,8 +9,11 @@ FOREVERDB_KEY, then run:
 
     python3 tools/build_data.py
 
-Only item IDs (and the minimum item level of armor kits) end up in
-ItemData.lua. Names, icons and tooltips come from the game itself.
+ItemData.lua gets, per item: what it is (food, armor kit, agility elixir or
+scroll, stat scroll), required level, and the numbers the addon needs (food
+score, armor, minimum item level, stat amount, buff spell ID). Names, icons
+and tooltips come from the game itself, in the client language. Item details
+are cached in tools/cache/ (ignored by git), so later runs are quick.
 """
 
 import json
@@ -28,9 +31,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(ROOT, "ItemData.lua")
 
-# Words in a Well Fed buff that matter for a hunter (same idea as FoodScore).
-FOOD_WORDS = ("agility", "attack power", "stamina", "critical", "intellect", "armor")
-SCROLL_STATS = ("stamina", "strength", "armor", "intellect")
 
 
 def load_key():
@@ -71,9 +71,42 @@ def clean(text):
     return re.sub(r"[​-‏⁠-⁤﻿]", "", text or "").lower()
 
 
-def effect_text(item_id):
+CACHE = os.path.join(HERE, "cache")  # ignored by git
+
+
+def details(item_id):
+    """Item details, cached on disk so a second run is quick."""
+    os.makedirs(CACHE, exist_ok=True)
+    path = os.path.join(CACHE, "%d.json" % item_id)
+    if os.path.exists(path):
+        return json.load(open(path, encoding="utf-8"))
     d = get("items/%d" % item_id)["data"]
-    return " ".join(clean(e.get("text")) for e in d.get("effects") or [])
+    json.dump(d, open(path, "w", encoding="utf-8"))
+    return d
+
+
+def effects(item_id):
+    d = details(item_id)
+    return [(clean(e.get("text")), e.get("spellId")) for e in d.get("effects") or []
+            if e.get("trigger") == "use"]
+
+
+def num(pattern, text):
+    m = re.search(pattern, text)
+    return int(m.group(1)) if m else None
+
+
+# Food score for a hunter, same weights as the addon used to read from tooltips.
+FOOD_SCORES = ((3, ("agility", "attack power")), (2, ("stamina", "critical")),
+               (1, ("intellect", "armor")))
+
+
+def food_score(buff):
+    score = 0
+    for value, words in FOOD_SCORES:
+        if any(w in buff for w in words):
+            score = max(score, value)
+    return score
 
 
 def main():
@@ -89,76 +122,99 @@ def main():
         offset += 100
     items = [i for i in items if not i.get("speculation")]
 
-    food, kits, boosts, scrolls, kit_min = [], [], [], [], {}
+    out = {}  # id -> (item, fields)
 
-    # 2. stat and agility scrolls: the name says it all
     for i in items:
-        if i["subclass"] != "Scrolls":
-            continue
-        m = re.match(r"Scroll of (Agility|Stamina|Strength|Protection|Intellect)( [IVX]+)?$", i["name"])
-        if m:
-            (boosts if m.group(1) == "Agility" else scrolls).append(i)
+        sub, name, iid = i["subclass"], i["name"], i["id"]
+        base = {"lvl": i.get("requiredLevel") or 0, "ilvl": i.get("itemLevel") or 0}
 
-    # 3. armor kits: need the text for the minimum item level
-    for i in items:
-        if i["subclass"] == "Permanent" and "Armor Kit" in i["name"]:
-            text = effect_text(i["id"])
-            if "chest, legs, hands, or feet" not in text and "chest, legs, hands or feet" not in text:
+        # stat and agility scrolls
+        if sub == "Scrolls":
+            m = re.match(r"Scroll of (Agility|Stamina|Strength|Protection|Intellect)( [IVX]+)?$", name)
+            if not m:
                 continue
-            kits.append(i)
-            m = re.search(r"items level (\d+) and above", text)
-            if m:
-                kit_min[i["id"]] = int(m.group(1))
+            text, spell = (effects(iid) or [("", None)])[0]
+            f = dict(base, amount=num(r"by (\d+)", text), spell=spell)
+            if m.group(1) == "Agility":
+                f.update(kind="boost", sub="scroll")
+            else:
+                f.update(kind="scroll", stat={"Protection": "armor"}.get(m.group(1), m.group(1).lower()))
+            out[iid] = (i, f)
 
-    # 4. agility elixirs
-    for i in items:
-        if i["subclass"] == "Elixirs":
-            if "agility" in effect_text(i["id"]):
-                boosts.append(i)
+        # armor kits
+        elif sub == "Permanent" and "Armor Kit" in name:
+            text = " ".join(t for t, _ in effects(iid))
+            if "chest, legs, hands" not in text:
+                continue
+            f = dict(base, kind="kit",
+                     armor=num(r"armor value by (\d+)", text) or 0,
+                     minIlvl=num(r"items level (\d+) and above", text) or 0,
+                     caster=any(w in text for w in ("spell power", "spell damage", "healing")))
+            out[iid] = (i, f)
 
-    # 5. Well Fed food with a stat a hunter can use
-    for i in items:
-        if i["subclass"] == "Food & Drink":
-            text = effect_text(i["id"])
-            if "well fed" in text:
-                buff = text.split("well fed", 1)[1]
-                if any(w in buff for w in FOOD_WORDS):
-                    food.append(i)
+        # agility elixirs
+        elif sub == "Elixirs":
+            eff = effects(iid)
+            text = " ".join(t for t, _ in eff)
+            if "agility" not in text:
+                continue
+            amount = (num(r"agility(?: and \w+)? by (\d+)", text) or num(r"(\d+) agility", text)
+                      or num(r"by (\d+)", text))
+            out[iid] = (i, dict(base, kind="boost", sub="elixir", amount=amount, spell=eff[0][1] if eff else None))
 
-    write(build, food, kits, kit_min, boosts, scrolls)
-    print("food %d, kits %d, agility %d, stat scrolls %d, build %s"
-          % (len(food), len(kits), len(boosts), len(scrolls), build))
+        # Well Fed food with a stat a hunter can use
+        elif sub == "Food & Drink":
+            text = " ".join(t for t, _ in effects(iid))
+            if "well fed" not in text:
+                continue
+            score = food_score(text.split("well fed", 1)[1])
+            if score > 0:
+                out[iid] = (i, dict(base, kind="food", score=score))
+
+    write(build, out)
+    counts = {}
+    for _, f in out.values():
+        counts[f["kind"]] = counts.get(f["kind"], 0) + 1
+    print(counts, "build", build)
 
 
-def lua_list(name, rows):
-    rows = sorted(rows, key=lambda i: (i.get("requiredLevel") or 0, i["name"]))
-    out = ["ns.%s = {" % name]
-    for i in rows:
-        out.append("    %-7s -- %s (level %d)" % ("%d," % i["id"], i["name"], i.get("requiredLevel") or 0))
-    out.append("}")
-    return "\n".join(out)
+def lua_value(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return '"%s"' % v
 
 
-def write(build, food, kits, kit_min, boosts, scrolls):
+ORDER = ("kind", "sub", "stat", "lvl", "ilvl", "score", "amount", "armor", "minIlvl", "caster", "spell")
+KIND_ORDER = {"food": 0, "kit": 1, "boost": 2, "scroll": 3}
+
+
+def write(build, out):
     parts = [
-        "-- Squared Away: item IDs, generated by tools/build_data.py. Do not edit.",
+        "-- Squared Away: item data, generated by tools/build_data.py. Do not edit.",
         "-- Data from ForeverDB.net (https://foreverdb.net), game build %s." % build,
-        "-- Only IDs are stored; names, icons and tooltips come from the game.",
+        "-- Names, icons and tooltips come from the game in your client language;",
+        "-- this file only says what each item is, so no tooltip words are needed.",
         "",
         "local ADDON, ns = ...",
         "",
         'ns.DATA_BUILD = "%s"' % build,
         'ns.DATA_SOURCE = "Data from ForeverDB.net (https://foreverdb.net)"',
         "",
-        lua_list("SEED_FOOD", food), "",
-        lua_list("SEED_KITS", kits), "",
-        "ns.KIT_MIN_ILVL = {",
+        "ns.ITEMS = {",
     ]
-    for kid in sorted(kit_min):
-        parts.append("    [%d] = %d," % (kid, kit_min[kid]))
-    parts += ["}", "", lua_list("SEED_BOOSTS", boosts), "", lua_list("SEED_SCROLLS", scrolls), ""]
-    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(parts))
+    rows = sorted(out.items(), key=lambda kv: (KIND_ORDER[kv[1][1]["kind"]], kv[1][1]["lvl"], kv[1][0]["name"]))
+    kind = None
+    for iid, (item, f) in rows:
+        if f["kind"] != kind:
+            kind = f["kind"]
+            parts.append("    -- %s" % kind)
+        fields = ", ".join("%s = %s" % (k, lua_value(f[k])) for k in ORDER if f.get(k) is not None)
+        parts.append("    [%d] = { %s }, -- %s" % (iid, fields, item["name"]))
+    parts += ["}", ""]
+    with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(parts))
     print("wrote", OUT)
 
 

@@ -19,7 +19,10 @@ ns.SCROLL_STATS = {
       coveredBy = { 1459, 23028 } },  -- Arcane Intellect, Arcane Brilliance
 }
 
--- Names of the Well Fed buff (English, German).
+-- Well Fed buff spell; its name is read from the game in the client language.
+ns.WELL_FED_SPELLS = { 19705 }
+
+-- Names of the Well Fed buff (English, German), as a fallback.
 ns.WELL_FED_NAMES = {
     ["Well Fed"] = true,
     ["Satt"] = true,
