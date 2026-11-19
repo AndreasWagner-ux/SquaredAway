@@ -137,6 +137,19 @@ local function Classify(id)
         elseif lname:find("scroll", 1, true) or lname:find("rolle", 1, true) then
             info.kind, info.sub = "boost", "scroll"
         end
+    elseif (lname:find("scroll", 1, true) or lname:find("rolle", 1, true))
+        and not text:find("%", 1, true)            -- skip % group scrolls
+        and not text:find("summon", 1, true) and not text:find("beschwört", 1, true) then
+        -- other stat scrolls: stamina, protection (armor), intellect
+        for _, s in ipairs(ns.SCROLL_STATS) do
+            for _, word in ipairs(s.words) do
+                if text:find(word, 1, true) then
+                    info.kind, info.stat = "scroll", s.key
+                    break
+                end
+            end
+            if info.kind then break end
+        end
     end
 
     db.items[id] = info.kind and info or false
@@ -373,6 +386,97 @@ local function BestBoost()
 end
 
 ----------------------------------------------------------------------
+-- Other stat scrolls (stamina, protection, intellect)
+-- Agility scrolls stay with the elixirs above, because they block each other.
+----------------------------------------------------------------------
+
+local function SpellName(id)
+    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+    if GetSpellInfo then return (GetSpellInfo(id)) end
+end
+
+-- Amount a stat scroll gives, read from its tooltip ("... by 16" / "... um 16").
+local function ScrollAmount(id)
+    local info = db.items[id]
+    if not info then return 0 end
+    if info.amount then return info.amount end
+    local text = TooltipText(id)
+    if not text then return 0 end
+    local amount = tonumber(text:match("by (%d+)") or text:match("um (%d+)"))
+    info.amount = amount
+    return amount or 0
+end
+
+-- Best scroll of a stat for your level: the strongest you carry, otherwise
+-- the strongest known.
+local function BestScroll(stat)
+    local level = UnitLevel("player")
+    local bestOwned, bestOwnedAmt, bestAny, bestAnyAmt
+    for id, info in pairs(db.items) do
+        if info and info.kind == "scroll" and info.stat == stat then
+            local _, _, _, _, minLevel = GetItemInfoFn(id)
+            if (minLevel or info.lvl or 0) <= level then
+                local amount = ScrollAmount(id)
+                if not bestAny or amount > bestAnyAmt then bestAny, bestAnyAmt = id, amount end
+                if (GetItemCountFn(id) or 0) > 0 and (not bestOwned or amount > bestOwnedAmt) then
+                    bestOwned, bestOwnedAmt = id, amount
+                end
+            end
+        end
+    end
+    return bestOwned or bestAny, bestOwned ~= nil
+end
+
+-- Is a scroll of this stat active? Returns true, expirationTime.
+local function ActiveScroll(stat)
+    local names = {}
+    for id, info in pairs(db.items) do
+        if info and info.kind == "scroll" and info.stat == stat then
+            if not info.spell then info.spell = GetItemSpellFn(id) end
+            if info.spell then names[info.spell] = true end
+        end
+    end
+    return FindBuff(function(name) return name and names[name] end)
+end
+
+-- Is the stat already covered by a class buff (Fortitude, Arcane Intellect)?
+-- Then a scroll would not stack. Returns the buff name.
+local function CoveredScroll(s)
+    if not s.coveredBy then return nil end
+    local names = {}
+    for _, id in ipairs(s.coveredBy) do
+        local n = SpellName(id)
+        if n then names[n] = true end
+    end
+    local found, _, name = FindBuff(function(n) return n and names[n] end)
+    return found and name or nil
+end
+
+-- One entry per scroll stat you could use at your level:
+-- { s = stat, state = "active" | "covered" | "missing", expires, buff, best, owned }
+local function ScrollStatus()
+    local list, active = {}, 0
+    for _, s in ipairs(ns.SCROLL_STATS) do
+        local best, owned = BestScroll(s.key)
+        local isActive, expires = ActiveScroll(s.key)
+        local covered = CoveredScroll(s)
+        if best or isActive or covered then
+            local e = { s = s, best = best, owned = owned }
+            if isActive then
+                e.state, e.expires = "active", expires
+            elseif covered then
+                e.state, e.buff = "covered", covered
+            else
+                e.state = "missing"
+            end
+            if e.state ~= "missing" then active = active + 1 end
+            list[#list + 1] = e
+        end
+    end
+    return list, active
+end
+
+----------------------------------------------------------------------
 -- Pet
 ----------------------------------------------------------------------
 
@@ -432,6 +536,7 @@ end
 local foodButton  = MakeButton("Interface\\Icons\\INV_Misc_Food_14", true)
 local kitButton   = MakeButton("Interface\\Icons\\INV_Misc_ArmorKit_17")
 local boostButton = MakeButton("Interface\\Icons\\INV_Scroll_02", true)
+local scrollButton = MakeButton("Interface\\Icons\\INV_Scroll_03", true)
 local petButton   = MakeButton("Interface\\Icons\\Ability_Hunter_BeastCall")
 
 -- Time left: minutes (rounded up), seconds under 1 minute.
@@ -542,6 +647,45 @@ boostButton:SetScript("OnEnter", function(self)
     GameTooltip:Show()
 end)
 
+scrollButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+    local list, active = ScrollStatus()
+    local r, g, bl = 0.4, 1, 0.4
+    if active == 0 then r, g, bl = 1, 0.4, 0.4 elseif active < #list then r, g, bl = 1, 0.82, 0 end
+    GameTooltip:AddLine("Scrolls: " .. active .. " of " .. #list .. " active", r, g, bl)
+    for _, e in ipairs(list) do
+        if e.state == "active" then
+            local text = TimeLeftText(e.expires)
+            GameTooltip:AddDoubleLine(e.s.label, "active" .. (text and (", " .. text .. (text:find("s") and "" or " min")) or ""),
+                1, 1, 1, 0.4, 1, 0.4)
+        elseif e.state == "covered" then
+            GameTooltip:AddDoubleLine(e.s.label, "covered by " .. e.buff, 1, 1, 1, 0.4, 1, 0.4)
+        end
+    end
+    local first = true
+    for _, e in ipairs(list) do
+        if e.state == "missing" then
+            if first then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("Missing:", 1, 0.4, 0.4)
+                first = false
+            end
+            if e.owned then
+                local count = GetItemCountFn(e.best) or 0
+                GameTooltip:AddDoubleLine("  " .. e.s.label, "use " .. ItemText(e.best), 1, 0.4, 0.4, 1, 1, 1)
+                GameTooltip:AddLine("    you have " .. count .. " in your bags", 0.5, 1, 0.5)
+            else
+                GameTooltip:AddDoubleLine("  " .. e.s.label, "none in bags", 1, 0.4, 0.4, 0.7, 0.7, 0.7)
+                if e.best then
+                    GameTooltip:AddLine("    good at your level: " .. ItemText(e.best), 0.7, 0.7, 0.7)
+                end
+            end
+        end
+    end
+    GameTooltip:AddLine("Agility scrolls are in the elixir icon.", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+end)
+
 petButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     local state, text = PetStatus()
@@ -569,6 +713,7 @@ local buttons = {
     { key = "food",  button = foodButton },
     { key = "kits",  button = kitButton },
     { key = "boost", button = boostButton },
+    { key = "scrolls", button = scrollButton },
     { key = "pet",   button = petButton, hunterOnly = true },
 }
 
@@ -578,11 +723,6 @@ local buttons = {
 ----------------------------------------------------------------------
 
 local aspectNames
-
-local function SpellName(id)
-    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
-    if GetSpellInfo then return (GetSpellInfo(id)) end
-end
 
 local function AspectNames()
     if not aspectNames then
@@ -676,13 +816,27 @@ local function Update()
     SetState(boostButton, active and "ok" or "missing", BestBoost())
     UpdateTimer(boostButton)
 
+    -- other scrolls: count in the icon, hidden while no scroll is known
+    local scrollList, scrollActive = ScrollStatus()
+    scrollButton.empty = #scrollList == 0
+    if not scrollButton.empty then
+        local firstMissing
+        for _, e in ipairs(scrollList) do
+            if e.state == "missing" and not firstMissing then firstMissing = e.best end
+        end
+        SetState(scrollButton, scrollActive == #scrollList and "ok" or scrollActive > 0 and "warn" or "missing",
+            firstMissing)
+        scrollButton.timer:SetText(scrollActive .. "/" .. #scrollList)
+        scrollButton.timer:SetTextColor(1, 1, 1)
+    end
+
     -- pet
     SetState(petButton, (PetStatus()))
 
     -- layout: visible icons side by side
     local x = 0
     for _, e in ipairs(buttons) do
-        if Shown(e.key) and (not e.hunterOnly or isHunter) then
+        if Shown(e.key) and (not e.hunterOnly or isHunter) and not e.button.empty then
             e.button:ClearAllPoints()
             e.button:SetPoint("LEFT", frame, "LEFT", x, 0)
             e.button:Show()
@@ -710,7 +864,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(240, 300)
+settings:SetSize(240, 330)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -764,9 +918,10 @@ end
 AddCheck("Show food", -50, ShowToggle("food"))
 AddCheck("Show armor kits", -76, ShowToggle("kits"))
 AddCheck("Show elixir / scroll", -102, ShowToggle("boost"))
-local petCheck = AddCheck("Show pet", -128, ShowToggle("pet"))
-local aspectCheck = AddCheck("Aspect reminder", -154, ShowToggle("aspect"))
-AddCheck("Lock bar", -186,
+AddCheck("Show other scrolls", -128, ShowToggle("scrolls"))
+local petCheck = AddCheck("Show pet", -154, ShowToggle("pet"))
+local aspectCheck = AddCheck("Aspect reminder", -180, ShowToggle("aspect"))
+AddCheck("Lock bar", -212,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
 
@@ -800,10 +955,12 @@ end
 local DB_TABS = {
     { key = "food",  label = "Food",            noun = "food" },
     { key = "kit",   label = "Armor kits",      noun = "armor kits" },
-    { key = "boost", label = "Elixirs/Scrolls", noun = "elixirs or scrolls" },
+    { key = "boost", label = "Agility", noun = "agility elixirs or scrolls" },
+    { key = "scroll", label = "Scrolls", noun = "stat scrolls" },
 }
-local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS" }
-local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost" }
+local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS", scroll = "SEED_SCROLLS" }
+local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost",
+    scrolls = "scroll", scroll = "scroll" }
 local ROW_H = 36
 local LIST_W = 344
 local QualityColor = (C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
@@ -842,8 +999,8 @@ dbClose:SetPoint("TOPRIGHT", -6, -6)
 local tabButtons = {}
 for i, t in ipairs(DB_TABS) do
     local b = CreateFrame("Button", nil, dbWin, "UIPanelButtonTemplate")
-    b:SetSize(118, 22)
-    b:SetPoint("TOPLEFT", 18 + (i - 1) * 122, -44)
+    b:SetSize(88, 22)
+    b:SetPoint("TOPLEFT", 18 + (i - 1) * 91, -44)
     b:SetText(t.label)
     b.key = t.key
     b:SetScript("OnClick", function()
@@ -952,6 +1109,13 @@ local function RowDetail(kind, id, info)
         local minIlvl = KitMinIlvl(id)
         if minIlvl > 0 then parts[#parts + 1] = "items of level " .. minIlvl .. "+" end
         return table.concat(parts, ", "), true
+    elseif kind == "scroll" then
+        local label = info.stat
+        for _, s in ipairs(ns.SCROLL_STATS) do
+            if s.key == info.stat then label = s.label:lower() end
+        end
+        local amount = ScrollAmount(id)
+        return (amount > 0 and ("+" .. amount .. " ") or "") .. label .. ", scroll", true
     else
         local amount = BoostAmount(id)
         local sub = info.sub == "scroll" and "scroll" or "elixir"
@@ -972,6 +1136,11 @@ local function SuggestedSet(kind)
         end
         if not next(set) then
             local id = Best("kit")
+            if id then set[id] = true end
+        end
+    elseif kind == "scroll" then
+        for _, s in ipairs(ns.SCROLL_STATS) do
+            local id = BestScroll(s.key)
             if id then set[id] = true end
         end
     else
@@ -1200,11 +1369,11 @@ events:SetScript("OnEvent", function(self, event, arg1)
 
         -- Items stored as "nothing" by an older version may now be elixirs
         -- or scrolls, so check those again once.
-        if (db.dataVersion or 1) < 2 then
+        if (db.dataVersion or 1) < 3 then
             for id, info in pairs(db.items) do
                 if info == false then db.items[id] = nil end
             end
-            db.dataVersion = 2
+            db.dataVersion = 3
         end
 
         isHunter = select(2, UnitClass("player")) == "HUNTER"
@@ -1219,6 +1388,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
         for _, id in ipairs(ns.SEED_KITS) do Classify(id) end
         for _, id in ipairs(ns.SEED_FOOD) do Classify(id) end
         for _, id in ipairs(ns.SEED_BOOSTS) do Classify(id) end
+        for _, id in ipairs(ns.SEED_SCROLLS) do Classify(id) end
         ScanBags()
         HookTooltips()
 
@@ -1288,7 +1458,7 @@ end)
 -- Slash commands
 ----------------------------------------------------------------------
 
-local TOGGLE_KEYS = { food = true, kits = true, boost = true, pet = true, aspect = true }
+local TOGGLE_KEYS = { food = true, kits = true, boost = true, scrolls = true, pet = true, aspect = true }
 
 SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
@@ -1317,20 +1487,27 @@ SlashCmdList.SQUAREDAWAY = function(msg)
             Print(arg .. (arg == "aspect" and " reminder " or " icon ") .. (cmd == "hide" and "hidden." or "shown."))
             Update()
         else
-            Print("use: /sqa " .. cmd .. " food | kits | boost | pet | aspect")
+            Print("use: /sqa " .. cmd .. " food | kits | boost | scrolls | pet | aspect")
         end
     elseif cmd == "list" then
-        local counts = { food = 0, kit = 0, boost = 0 }
+        local counts = { food = 0, kit = 0, boost = 0, scroll = 0 }
         for _, info in pairs(db.items) do
             if info and counts[info.kind] then counts[info.kind] = counts[info.kind] + 1 end
         end
         Print("known: " .. counts.food .. " Well Fed foods, " .. counts.kit .. " armor kits, "
-            .. counts.boost .. " agility elixirs/scrolls.")
+            .. counts.boost .. " agility elixirs/scrolls, " .. counts.scroll .. " other stat scrolls.")
         local food, kit = Best("food"), Best("kit")
         local boost = BestBoost()
         Print("food: " .. (food and ItemText(food) or "none known yet"))
         Print("armor kit: " .. (kit and ItemText(kit) or "none known yet"))
         Print("elixir or scroll: " .. (boost and ItemText(boost) or "none known yet"))
+        local scrollList, scrollActive = ScrollStatus()
+        local missingNames = {}
+        for _, e in ipairs(scrollList) do
+            if e.state == "missing" then missingNames[#missingNames + 1] = e.s.label end
+        end
+        Print("other scrolls: " .. scrollActive .. "/" .. #scrollList .. " active"
+            .. (#missingNames > 0 and (", missing: " .. table.concat(missingNames, ", ")) or ""))
         local missing, weaker = KitStatus()
         Print("missing kits: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
         Print("weaker kits: " .. (#weaker > 0 and table.concat(weaker, ", ") or "none"))
@@ -1345,8 +1522,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print("  /sqa config  open the settings (or right-click an icon)")
         Print("  /sqa list    what I know and suggest")
         Print("  /sqa db      database of known food, kits, elixirs and scrolls")
-        Print("               (/sqa db food | kits | boost opens that list)")
-        Print("  /sqa hide | show food | kits | boost | pet | aspect")
+        Print("               (/sqa db food | kits | boost | scrolls opens that list)")
+        Print("  /sqa hide | show food | kits | boost | scrolls | pet | aspect")
         Print("  /sqa lock | unlock    stop or allow dragging")
         Print("  /sqa reset   move icons back to the middle")
     end

@@ -87,6 +87,25 @@ ns.SEED_BOOSTS = {
     10309,  -- Scroll of Agility IV
 }
 
+-- Other stat scrolls a hunter can use (checked in game). Agility scrolls are
+-- in SEED_BOOSTS, because they do not stack with agility elixirs.
+ns.SEED_SCROLLS = {
+    1180, 1711, 4422, 10307,  -- Scroll of Stamina I-IV
+    3013, 1478, 4421, 10305,  -- Scroll of Protection I-IV
+    955,  2290, 4419, 10308,  -- Scroll of Intellect I-IV
+}
+
+-- Which scroll stats count for the scroll icon, the tooltip words that
+-- identify them (English, German), and class buffs that already cover the
+-- stat (a scroll would not stack with them).
+ns.SCROLL_STATS = {
+    { key = "stamina",   label = "Stamina",    words = { "stamina", "ausdauer" },
+      coveredBy = { 1243, 21562 } },  -- Power Word: Fortitude, Prayer of Fortitude
+    { key = "armor",     label = "Protection", words = { "armor", "rüstung" } },
+    { key = "intellect", label = "Intellect",  words = { "intellect", "intelligenz" },
+      coveredBy = { 1459, 23028 } },  -- Arcane Intellect, Arcane Brilliance
+}
+
 -- Names of the Well Fed buff (English, German).
 ns.WELL_FED_NAMES = {
     ["Well Fed"] = true,

@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: |cff7fd4ffSquared Away|r [Forever]
-## Notes: Reminds you about Well Fed food, armor kits, agility elixirs or scrolls, your pet and your aspect, and suggests what fits your level.
+## Notes: Reminds you about Well Fed food, armor kits, agility elixirs, stat scrolls, your pet and your aspect, and suggests what fits your level.
 ## Author: Andreaswagner-ux
-## Version: 0.8.0
+## Version: 0.9.0
 ## SavedVariables: SquaredAwayDB
 ## X-License: GPL-3.0-or-later
 ## X-Website: https://github.com/AndreasWagner-ux/SquaredAway
