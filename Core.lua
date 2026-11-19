@@ -140,7 +140,7 @@ local function Classify(id)
     elseif (lname:find("scroll", 1, true) or lname:find("rolle", 1, true))
         and not text:find("%", 1, true)            -- skip % group scrolls
         and not text:find("summon", 1, true) and not text:find("beschwört", 1, true) then
-        -- other stat scrolls: stamina, protection (armor), intellect
+        -- other stat scrolls: stamina, strength, protection (armor), intellect
         for _, s in ipairs(ns.SCROLL_STATS) do
             for _, word in ipairs(s.words) do
                 if text:find(word, 1, true) then
@@ -386,7 +386,7 @@ local function BestBoost()
 end
 
 ----------------------------------------------------------------------
--- Other stat scrolls (stamina, protection, intellect)
+-- Other stat scrolls (stamina, strength, protection, intellect)
 -- Agility scrolls stay with the elixirs above, because they block each other.
 ----------------------------------------------------------------------
 
@@ -1369,11 +1369,11 @@ events:SetScript("OnEvent", function(self, event, arg1)
 
         -- Items stored as "nothing" by an older version may now be elixirs
         -- or scrolls, so check those again once.
-        if (db.dataVersion or 1) < 3 then
+        if (db.dataVersion or 1) < 4 then
             for id, info in pairs(db.items) do
                 if info == false then db.items[id] = nil end
             end
-            db.dataVersion = 3
+            db.dataVersion = 4
         end
 
         isHunter = select(2, UnitClass("player")) == "HUNTER"
