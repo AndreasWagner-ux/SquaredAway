@@ -10,6 +10,12 @@
 
 local ADDON, ns = ...
 
+-- ItemData.lua is generated; keep the addon working if a list is missing.
+for _, key in ipairs({ "SEED_FOOD", "SEED_KITS", "SEED_BOOSTS", "SEED_SCROLLS", "KIT_MIN_ILVL" }) do
+    ns[key] = ns[key] or {}
+end
+local CREDIT = "Data from ForeverDB.net (https://foreverdb.net)"
+
 local PREFIX = "|cff7fd4ffSquared Away|r: "
 local ICON_SIZE = 36
 local GAP = 6
@@ -865,7 +871,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(240, 330)
+settings:SetSize(260, 360)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -928,7 +934,7 @@ AddCheck("Lock bar", -212,
 
 local resetBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 resetBtn:SetSize(140, 22)
-resetBtn:SetPoint("BOTTOM", 0, 20)
+resetBtn:SetPoint("BOTTOM", 0, 44)
 resetBtn:SetText("Reset position")
 resetBtn:SetScript("OnClick", function()
     db.pos = nil
@@ -970,7 +976,7 @@ local dbTab = "food"
 
 local dbWin = CreateFrame("Frame", "SquaredAwayDatabase", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-dbWin:SetSize(400, 480)
+dbWin:SetSize(400, 500)
 dbWin:SetPoint("CENTER")
 dbWin:SetFrameStrata("DIALOG")
 dbWin:SetMovable(true)
@@ -1013,7 +1019,7 @@ end
 
 local scroll = CreateFrame("ScrollFrame", "SquaredAwayDatabaseScroll", dbWin, "UIPanelScrollFrameTemplate")
 scroll:SetPoint("TOPLEFT", 18, -74)
-scroll:SetPoint("BOTTOMRIGHT", -38, 96)
+scroll:SetPoint("BOTTOMRIGHT", -38, 112)
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(LIST_W, 1)
 scroll:SetScrollChild(content)
@@ -1023,6 +1029,12 @@ footer:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, -10)
 footer:SetWidth(364)
 footer:SetJustifyH("LEFT")
 footer:SetJustifyV("TOP")
+
+local dbCredit = dbWin:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+dbCredit:SetPoint("BOTTOMLEFT", 18, 16)
+dbCredit:SetWidth(364)
+dbCredit:SetJustifyH("LEFT")
+dbCredit:SetText(CREDIT .. (ns.DATA_BUILD and (", game build " .. ns.DATA_BUILD) or ""))
 
 local rows = {}
 
@@ -1279,6 +1291,11 @@ local function ToggleDB(tab)
         OpenDB(tab)
     end
 end
+
+local settingsCredit = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+settingsCredit:SetPoint("BOTTOM", 0, 18)
+settingsCredit:SetWidth(220)
+settingsCredit:SetText(CREDIT .. (ns.DATA_BUILD and ("\nGame build " .. ns.DATA_BUILD) or ""))
 
 local dbBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 dbBtn:SetSize(140, 22)

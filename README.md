@@ -26,7 +26,7 @@ The icons hide in combat. Squared Away never buys or uses anything. It only remi
 
 ## How it knows items
 
-Squared Away starts with a small list of item IDs. Names, icons and level requirements come from the game itself, in your client language. It also learns new food, kits and elixirs by itself whenever you hover over an item, visit a vendor or carry something in your bags.
+Squared Away starts with a list of item IDs from ForeverDB.net (food, armor kits, elixirs and scrolls). Names, icons and level requirements come from the game itself, in your client language. It also learns new food, kits and elixirs by itself whenever you hover over an item, visit a vendor or carry something in your bags.
 
 ## Installation
 
@@ -60,6 +60,10 @@ Commands:
 ## Feedback
 
 Found a bug or have an idea? Please open an [issue](https://github.com/AndreasWagner-ux/SquaredAway/issues).
+
+## Credits
+
+Item data from [ForeverDB.net](https://foreverdb.net). The item ID lists in `ItemData.lua` are generated with `tools/build_data.py` from the ForeverDB API. ForeverDB is not affiliated with Blizzard Entertainment.
 
 ## License
 
