@@ -643,7 +643,7 @@ boostButton:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("No agility elixir or scroll", 1, 0.4, 0.4)
     end
     AddSuggestion(BestBoost())
-    GameTooltip:AddLine("Elixir and scroll do not stack: use one.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Agility elixir and agility scroll do not stack: use one.", 0.7, 0.7, 0.7, true)
     GameTooltip:Show()
 end)
 
@@ -652,7 +652,7 @@ scrollButton:SetScript("OnEnter", function(self)
     local list, active = ScrollStatus()
     local r, g, bl = 0.4, 1, 0.4
     if active == 0 then r, g, bl = 1, 0.4, 0.4 elseif active < #list then r, g, bl = 1, 0.82, 0 end
-    GameTooltip:AddLine("Scrolls: " .. active .. " of " .. #list .. " active", r, g, bl)
+    GameTooltip:AddLine("Stat scrolls: " .. active .. " of " .. #list .. " active", r, g, bl)
     for _, e in ipairs(list) do
         if e.state == "active" then
             local text = TimeLeftText(e.expires)
@@ -682,7 +682,8 @@ scrollButton:SetScript("OnEnter", function(self)
             end
         end
     end
-    GameTooltip:AddLine("Agility scrolls are in the elixir icon.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Stamina, Strength, Protection, Intellect.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Agility scrolls are in the agility icon.", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end)
 
@@ -917,8 +918,8 @@ end
 
 AddCheck("Show food", -50, ShowToggle("food"))
 AddCheck("Show armor kits", -76, ShowToggle("kits"))
-AddCheck("Show elixir / scroll", -102, ShowToggle("boost"))
-AddCheck("Show other scrolls", -128, ShowToggle("scrolls"))
+AddCheck("Show agility elixir / scroll", -102, ShowToggle("boost"))
+AddCheck("Show stat scrolls", -128, ShowToggle("scrolls"))
 local petCheck = AddCheck("Show pet", -154, ShowToggle("pet"))
 local aspectCheck = AddCheck("Aspect reminder", -180, ShowToggle("aspect"))
 AddCheck("Lock bar", -212,
@@ -956,7 +957,7 @@ local DB_TABS = {
     { key = "food",  label = "Food",            noun = "food" },
     { key = "kit",   label = "Armor kits",      noun = "armor kits" },
     { key = "boost", label = "Agility", noun = "agility elixirs or scrolls" },
-    { key = "scroll", label = "Scrolls", noun = "stat scrolls" },
+    { key = "scroll", label = "Stat scrolls", noun = "stat scrolls" },
 }
 local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS", scroll = "SEED_SCROLLS" }
 local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost",
@@ -1495,7 +1496,7 @@ SlashCmdList.SQUAREDAWAY = function(msg)
             if info and counts[info.kind] then counts[info.kind] = counts[info.kind] + 1 end
         end
         Print("known: " .. counts.food .. " Well Fed foods, " .. counts.kit .. " armor kits, "
-            .. counts.boost .. " agility elixirs/scrolls, " .. counts.scroll .. " other stat scrolls.")
+            .. counts.boost .. " agility elixirs/scrolls, " .. counts.scroll .. " stat scrolls.")
         local food, kit = Best("food"), Best("kit")
         local boost = BestBoost()
         Print("food: " .. (food and ItemText(food) or "none known yet"))
@@ -1506,7 +1507,7 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         for _, e in ipairs(scrollList) do
             if e.state == "missing" then missingNames[#missingNames + 1] = e.s.label end
         end
-        Print("other scrolls: " .. scrollActive .. "/" .. #scrollList .. " active"
+        Print("stat scrolls: " .. scrollActive .. "/" .. #scrollList .. " active"
             .. (#missingNames > 0 and (", missing: " .. table.concat(missingNames, ", ")) or ""))
         local missing, weaker = KitStatus()
         Print("missing kits: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))

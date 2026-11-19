@@ -10,15 +10,17 @@ A small reminder bar for **WoW Forever**. It shows at a glance whether you are r
 |---|---|---|---|
 | Food | Well Fed, with minute countdown | | Not Well Fed |
 | Armor kits | Kit on chest, legs, hands and feet | A slot has a weaker kit than you could use | A slot has no kit |
-| Elixir / scroll | Agility elixir or scroll active, with countdown | | None active |
-| Other scrolls | All stat scrolls active (count in the icon, e.g. 4/4) | Some active | None active |
+| Agility (elixir or scroll) | Agility elixir or scroll active, with countdown | | None active |
+| Stat scrolls | Stamina, Strength, Protection and Intellect scrolls all active (count in the icon, e.g. 4/4) | Some active | None active |
 | Pet (hunters) | Summoned and happy | Content | Unhappy, dead or not summoned |
 
 **Aspect reminder (hunters):** while no aspect is active, a flashing "No aspect active!" appears in the middle of the screen, in and out of combat, until you choose one. It stays away while you are dead or on a flight path, and before you have learned your first aspect. Switch it off in the settings or with `/sqa hide aspect`.
 
+Agility scrolls are not part of the stat scrolls icon: they share the agility icon with agility elixirs, because the two do not stack.
+
 Hover over an icon to see the best food, kit or elixir/scroll for your level and how many you carry. An agility elixir and an agility scroll do not stack, so only one of them is suggested.
 
-**Other scrolls:** Stamina, Strength, Protection and Intellect scrolls each give their own buff. The icon counts how many of them are active (for example 2/4), and the tooltip names each missing one and tells you whether you carry a scroll for it. A stat already covered by a class buff (Power Word: Fortitude, Arcane Intellect) counts as done. The icon only appears once you know at least one such scroll.
+**Stat scrolls:** Stamina, Strength, Protection and Intellect scrolls each give their own buff. The icon counts how many of them are active (for example 2/4), and the tooltip names each missing one and tells you whether you carry a scroll for it. A stat already covered by a class buff (Power Word: Fortitude, Arcane Intellect) counts as done. The icon only appears once you know at least one such scroll.
 
 The icons hide in combat. Squared Away never buys or uses anything. It only reminds you.
 
