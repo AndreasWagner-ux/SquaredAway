@@ -749,7 +749,8 @@ end
 local BuyAmmo
 
 -- Asked before buying ammo that is weaker than the ammo you shoot now.
-StaticPopupDialogs = StaticPopupDialogs or {}
+-- Only add our own entry: never assign StaticPopupDialogs itself, that would
+-- taint Blizzard's popups (for example the logout countdown).
 StaticPopupDialogs["SQUAREDAWAY_WORSE_AMMO"] = {
     text = "%s",
     button1 = L["Buy anyway"],
