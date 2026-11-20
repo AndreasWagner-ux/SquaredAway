@@ -2,7 +2,7 @@
 
 A small reminder bar for **WoW Forever**. It shows at a glance whether you are ready for the next fight, and what would be good to have at your current level.
 
-> Early version (alpha). Built and tested for a hunter. Other classes and races will follow.
+> Early version (alpha). Made for hunters: on other classes the addon switches itself off and only says so once in chat. Other classes will follow.
 
 ## What it checks
 

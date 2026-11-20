@@ -179,4 +179,5 @@ if locale == "deDE" then
     L["Only for your melee weapon, not your bow or gun."] = "Nur für deine Nahkampfwaffe, nicht für Bogen oder Gewehr."
     L["No\nquiver"] = "Kein\nKöcher"
     L["No\npouch"] = "Kein\nBeutel"
+    L["is made for hunters and stays off on this character. Other classes will follow later."] = "ist für Jäger gemacht und bleibt bei diesem Charakter ausgeschaltet. Andere Klassen folgen später."
 end

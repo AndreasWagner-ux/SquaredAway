@@ -41,6 +41,7 @@ local WARN  = "Interface\\RaidFrame\\ReadyCheck-Waiting"
 local CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 
 local db
+local disabled = false -- true on non-hunters: the addon stays off
 local pending = {}
 local QueueUpdate -- set further down
 local isHunter = false
@@ -1008,6 +1009,7 @@ local function ShowAmmoText()
 end
 
 C_Timer.NewTicker(1, function()
+    if disabled or not db then return end
     ShowAmmoText()
     UpdateTimer(foodButton)
     UpdateTimer(boostButton)
@@ -1234,7 +1236,7 @@ local function SetState(b, state, iconId)
 end
 
 local function Shown(key)
-    return not (db.hidden and db.hidden[key])
+    return not (db and db.hidden and db.hidden[key])
 end
 
 local buttons = {
@@ -1467,6 +1469,7 @@ local function AddCheck(label, y, getter, setter)
     text:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     text:SetText(label)
     cb:SetScript("OnClick", function(self)
+        if not db then return end
         setter(self:GetChecked() and true or false)
         Update()
     end)
@@ -1498,6 +1501,7 @@ resetBtn:SetSize(140, 22)
 resetBtn:SetPoint("BOTTOM", 0, 44)
 resetBtn:SetText(L["Reset position"])
 resetBtn:SetScript("OnClick", function()
+    if not db then return end
     db.pos = nil
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
@@ -1870,6 +1874,7 @@ dbBtn:SetSize(140, 22)
 dbBtn:SetPoint("BOTTOM", resetBtn, "TOP", 0, 6)
 dbBtn:SetText(L["Database"])
 dbBtn:SetScript("OnClick", function()
+    if not db then return end
     settings:Hide()
     OpenDB()
 end)
@@ -1950,6 +1955,15 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "PLAYER_LOGIN" then
+        -- Squared Away is made for hunters: on other classes it switches
+        -- itself off completely and only says so once in chat.
+        if select(2, UnitClass("player")) ~= "HUNTER" then
+            disabled = true
+            self:UnregisterAllEvents()
+            Print(L["is made for hunters and stays off on this character. Other classes will follow later."])
+            return
+        end
+
         SquaredAwayDB = SquaredAwayDB or {}
         db = SquaredAwayDB
         db.items = db.items or {}
@@ -2076,6 +2090,10 @@ local TOGGLE_KEYS = { food = true, kits = true, boost = true, scrolls = true, am
 SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
 SlashCmdList.SQUAREDAWAY = function(msg)
+    if disabled or not db then
+        Print(L["is made for hunters and stays off on this character. Other classes will follow later."])
+        return
+    end
     msg = (msg or ""):lower():match("^%s*(.-)%s*$")
     local cmd, arg = msg:match("^(%S*)%s*(.-)$")
 
