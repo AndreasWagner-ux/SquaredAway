@@ -686,11 +686,31 @@ local function AmmoStatus(buyId)
     if st.quiverSlots > 0 then
         st.capacity = math.min(st.quiverSlots, limit or st.quiverSlots) * stack
     else
+        -- no quiver: arrows go into the normal bags
         st.capacity = (limit or 2) * stack
-        st.free = math.max(0, st.capacity - (buyId and st.counts[buyId] or st.count))
+        st.free = math.max(0, st.capacity - (buyId and (st.counts[buyId] or 0) or st.count))
+        -- never more than fits: empty slots in normal bags plus room on
+        -- unfilled stacks of the same ammo
+        local room = 0
+        local getFree = (C_Container and C_Container.GetContainerNumFreeSlots) or GetContainerNumFreeSlots
+        for bag = 0, NUM_BAG_SLOTS or 4 do
+            local _, family = getFree(bag)
+            if not family or family == 0 then
+                for slot = 1, NumSlots(bag) do
+                    local id, n = SlotInfo(bag, slot)
+                    if not id then
+                        room = room + stack
+                    elseif buyId and id == buyId and (n or 0) < stack then
+                        room = room + stack - n
+                    end
+                end
+            end
+        end
+        st.bagRoom = room
+        st.free = math.min(st.free, room)
     end
     if limit and st.quiverSlots > 0 then
-        st.free = math.min(st.free, math.max(0, st.capacity - (buyId and st.counts[buyId] or st.count)))
+        st.free = math.min(st.free, math.max(0, st.capacity - (buyId and (st.counts[buyId] or 0) or st.count)))
     end
     st.ratio = st.capacity > 0 and math.min(1, st.count / st.capacity) or 0
     return st
@@ -1121,8 +1141,9 @@ ammoButton:SetScript("OnEnter", function(self)
         GameTooltip:AddLine(L["%s: %d slots"]:format(st.quiverName or (st.kind == "arrow" and L["Quiver"] or L["Ammo pouch"]),
             st.quiverSlots), 0.7, 0.7, 0.7)
     else
-        GameTooltip:AddLine(st.kind == "arrow" and L["No quiver: counting 2 stacks as full."]
-            or L["No ammo pouch: counting 2 stacks as full."], 0.7, 0.7, 0.7, true)
+        local stacks = (db.ammoStacks or 0) > 0 and db.ammoStacks or 2
+        GameTooltip:AddLine((st.kind == "arrow" and L["No quiver: counting %d stacks in your bags as full."]
+            or L["No ammo pouch: counting %d stacks in your bags as full."]):format(stacks), 0.7, 0.7, 0.7, true)
     end
     -- better ammo already in the bags, but not the one you shoot
     local equipped = GetInventoryItemID("player", AMMO_SLOT)
