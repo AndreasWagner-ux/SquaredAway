@@ -1829,6 +1829,9 @@ local function CreateMinimapButton()
     MinimapButtonShown()
 end
 
+local ToggleShopping, ShopEvent, SaveShopListSoon
+
+do
 ----------------------------------------------------------------------
 -- Shopping list: what to buy at the auction house, mailable to another
 -- character. The list is saved account-wide, so a non-hunter auction
@@ -1893,6 +1896,19 @@ local function BuildShoppingList()
 
     db.shopList = { char = UnitName("player"), level = UnitLevel("player"), time = time(), lines = lines }
     return db.shopList
+end
+
+-- Saves the list a few seconds after the bags change. Not at logout: by
+-- then the game has already emptied the bag data, so every count would be 0.
+local shopSavePending = false
+function SaveShopListSoon()
+    if shopSavePending or not db then return end
+    shopSavePending = true
+    C_Timer.After(3, function()
+        shopSavePending = false
+        if InCombatLockdown() then SaveShopListSoon() return end
+        BuildShoppingList()
+    end)
 end
 
 local shop = CreateFrame("Frame", "SquaredAwayShopping", UIParent,
@@ -2128,7 +2144,7 @@ function shop:Refresh()
 end
 shop:SetScript("OnShow", function(self) self:Refresh() end)
 
-local function ToggleShopping()
+function ToggleShopping()
     if shop:IsShown() then shop:Hide() else shopAuto = false; shop:Show() end
 end
 
@@ -2158,7 +2174,7 @@ local function ShopAutoClose()
     shopAuto = false
 end
 
-local function ShopEvent(event)
+function ShopEvent(event)
     if event == "MAIL_SHOW" then
         mailOpen = true
         ShopAutoOpen(MailFrame)
@@ -2177,6 +2193,8 @@ local function ShopEvent(event)
         ShopAutoClose()
     end
 end
+
+end -- shopping list
 
 -- Entry in Esc > Options > AddOns: a short page with a button that opens
 -- the Squared Away window.
@@ -2203,6 +2221,11 @@ local function RegisterOptions()
     end
 end
 
+-- The database window and the shopping list live in do-blocks, so their
+-- many helper names do not count towards Lua's limit of 200 locals per file.
+local ICON_TAB, OpenDB, ToggleDB
+
+do
 ----------------------------------------------------------------------
 -- Database window (/sqa db, settings button, shift + right-click an icon)
 -- Lists all known food, kits and elixirs/scrolls sorted by level.
@@ -2215,7 +2238,7 @@ local DB_TABS = {
     { key = "scroll", label = L["Stat buffs"], noun = L["stat buffs"] },
 }
 local DB_SEEDS = { food = "SEED_FOOD", kit = "SEED_KITS", boost = "SEED_BOOSTS", scroll = "SEED_SCROLLS" }
-local ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost",
+ICON_TAB = { food = "food", kits = "kit", kit = "kit", boost = "boost",
     scrolls = "scroll", scroll = "scroll" }
 local ROW_H = 36
 local LIST_W = 384
@@ -2528,7 +2551,7 @@ RefreshDB = function()
     footer:SetText(table.concat(notes, "\n"))
 end
 
-local function OpenDB(tab)
+function OpenDB(tab)
     if tab then dbTab = tab end
     -- ask the game again for items it has not sent yet
     for _, key in pairs(DB_SEEDS) do
@@ -2540,13 +2563,14 @@ local function OpenDB(tab)
     RefreshDB()
 end
 
-local function ToggleDB(tab)
+function ToggleDB(tab)
     if dbWin:IsShown() and (not tab or tab == dbTab) then
         dbWin:Hide()
     else
         OpenDB(tab)
     end
 end
+end -- database window
 
 dbBtn:SetScript("OnClick", function()
     if not db then return end
@@ -2638,10 +2662,6 @@ events:SetScript("OnEvent", function(self, event, arg1)
         ShopEvent(event)
         if disabled then return end
     end
-    if event == "PLAYER_LOGOUT" then
-        if db then BuildShoppingList() end
-        return
-    end
     if event == "PLAYER_LOGIN" then
         -- Squared Away is made for hunters: on other classes it switches
         -- itself off completely and only says so once in chat.
@@ -2704,7 +2724,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
         self:RegisterEvent("BAG_UPDATE_DELAYED")
         self:RegisterEvent("MERCHANT_SHOW")
-        for _, e in ipairs({ "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "PLAYER_LOGOUT" }) do
+        for _, e in ipairs({ "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
             pcall(self.RegisterEvent, self, e)
         end
         self:RegisterEvent("MERCHANT_CLOSED")
@@ -2725,6 +2745,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
             last.food, last.kit = Best("food"), Best("kit")
             last.boost = BestBoost()
             Update()
+            SaveShopListSoon()
         end)
         frame:SetScale(math.min(64 / ICON_SIZE, math.max(24 / ICON_SIZE, db.iconScale or 1)))
         CreateMinimapButton()
@@ -2752,6 +2773,11 @@ events:SetScript("OnEvent", function(self, event, arg1)
         ScanBags()
         if merchantOpen and not buying then ScanMerchantAmmo() end
         QueueUpdate()
+        SaveShopListSoon()
+
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+        QueueUpdate()
+        SaveShopListSoon()
 
     elseif event == "MERCHANT_SHOW" then
         merchantOpen = true
@@ -2771,6 +2797,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
         C_Timer.After(1, function()
             AnnounceIfChanged()
             Update()
+            SaveShopListSoon()
         end)
 
     else
