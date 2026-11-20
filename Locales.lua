@@ -209,4 +209,6 @@ if locale == "deDE" then
     L["From %s (level %d), %d min ago."] = "Von %s (Stufe %d), vor %d Min."
     L["(%d more in the mail)"] = "(%d weitere im Brief)"
     L["is made for hunters. On this character only the shopping list is available (/sqa)."] = "ist für Jäger gemacht. Bei diesem Charakter gibt es nur die Einkaufsliste (/sqa)."
+    L["Save list"] = "Liste speichern"
+    L["Saved. Your other characters see it after you log out or /reload."] = "Gespeichert. Deine anderen Charaktere sehen sie, nachdem du dich abmeldest oder /reload eingibst."
 end

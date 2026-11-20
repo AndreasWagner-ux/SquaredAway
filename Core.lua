@@ -1913,7 +1913,7 @@ end
 
 local shop = CreateFrame("Frame", "SquaredAwayShopping", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-shop:SetSize(360, 468)
+shop:SetSize(360, 520)
 shop:SetPoint("CENTER", 220, 0)
 shop:SetFrameStrata("DIALOG")
 shop:SetMovable(true)
@@ -2041,7 +2041,7 @@ targetsNote:SetText(L["Stat buffs: per stat. Armor kits: one per slot that needs
 
 -- recipient and mail button
 local mailLabel = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-mailLabel:SetPoint("BOTTOMLEFT", 18, 58)
+mailLabel:SetPoint("BOTTOMLEFT", 18, 84)
 mailLabel:SetText(L["Mail to:"])
 local recipient = CreateFrame("EditBox", nil, shop, BackdropTemplateMixin and "BackdropTemplate" or nil)
 recipient:SetSize(170, 24)
@@ -2060,9 +2060,18 @@ end)
 local mailBtn = FlatButton(shop, L["Fill mail"], 150)
 mailBtn:SetPoint("BOTTOMLEFT", 18, 18)
 local mailNote = shop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-mailNote:SetPoint("LEFT", mailBtn, "RIGHT", 12, 0)
-mailNote:SetWidth(170)
+mailNote:SetPoint("BOTTOMLEFT", 18, 54)
+mailNote:SetWidth(324)
 mailNote:SetJustifyH("LEFT")
+
+-- Save the list now, so other characters on the account get it.
+local saveBtn = FlatButton(shop, L["Save list"], 150)
+saveBtn:SetPoint("BOTTOMRIGHT", -18, 18)
+saveBtn:SetScript("OnClick", function()
+    if not db then return end
+    shop:Refresh()
+    mailNote:SetText(L["Saved. Your other characters see it after you log out or /reload."])
+end)
 
 -- Mail text in parts that fit the mail body.
 local function MailParts(list)
@@ -2141,6 +2150,7 @@ function shop:Refresh()
     mailBtn:SetEnabled(mailOpen and #lines > 0)
     mailBtn:SetAlpha((mailOpen and #lines > 0) and 1 or 0.5)
     mailNote:SetText(mailOpen and "" or L["Open a mailbox to fill a mail."])
+    saveBtn:SetShown(db ~= nil)
 end
 shop:SetScript("OnShow", function(self) self:Refresh() end)
 
