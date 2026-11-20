@@ -169,7 +169,6 @@ if locale == "deDE" then
     L["Only for your melee weapon, not your bow or gun."] = "Nur für deine Nahkampfwaffe, nicht für Bogen oder Gewehr."
     L["No\nquiver"] = "Kein\nKöcher"
     L["No\npouch"] = "Kein\nBeutel"
-    L["is made for hunters and stays off on this character. Other classes will follow later."] = "ist für Jäger gemacht und bleibt bei diesem Charakter ausgeschaltet. Andere Klassen folgen später."
     -- settings window
     L["Icons on the bar"] = "Symbole auf der Leiste"
     L["Agility (elixir or scroll)"] = "Beweglichkeit (Elixier, Rolle)"
@@ -194,4 +193,20 @@ if locale == "deDE" then
     L["Left-click: hide the bar"] = "Linksklick: Leiste ausblenden"
     L["Right-click: settings"] = "Rechtsklick: Einstellungen"
     L["Drag: move this button"] = "Ziehen: Knopf verschieben"
+    -- shopping list
+    L["Shopping list"] = "Einkaufsliste"
+    L["How many to carry"] = "Wie viel mitnehmen"
+    L["Stat buffs: per stat. Armor kits: one per slot that needs one."] = "Werte-Buffs: pro Wert. Rüstungssets: eins pro Platz, der eins braucht."
+    L["Mail to:"] = "Post an:"
+    L["Fill mail"] = "Brief ausfüllen"
+    L["Enter a recipient first."] = "Bitte zuerst einen Empfänger eintragen."
+    L["Check the mail and press Send."] = "Brief prüfen und auf Senden klicken."
+    L["Open a mailbox to fill a mail."] = "Öffne einen Briefkasten, um einen Brief auszufüllen."
+    L["Part %d of %d: press Fill mail again."] = "Teil %d von %d: noch einmal auf Brief ausfüllen klicken."
+    L["Nothing to buy: everything is stocked."] = "Nichts zu kaufen: alles ist vorrätig."
+    L["No list yet. Log in with your hunter once."] = "Noch keine Liste. Melde dich einmal mit deinem Jäger an."
+    L["For level %d. What is in your bags is already subtracted."] = "Für Stufe %d. Was in deinen Taschen ist, ist schon abgezogen."
+    L["From %s (level %d), %d min ago."] = "Von %s (Stufe %d), vor %d Min."
+    L["(%d more in the mail)"] = "(%d weitere im Brief)"
+    L["is made for hunters. On this character only the shopping list is available (/sqa)."] = "ist für Jäger gemacht. Bei diesem Charakter gibt es nur die Einkaufsliste (/sqa)."
 end

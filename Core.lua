@@ -430,7 +430,7 @@ end
 
 -- Elixir and scroll of the same stat do not stack, so suggest only one:
 -- the one you already carry, otherwise the stronger one.
-local function BestBoost()
+local function BestBoost(anyOnly)
     local level = UnitLevel("player")
     local bestOwned, bestOwnedAmt, bestAny, bestAnyAmt
     for id, info in pairs(db.items) do
@@ -445,6 +445,7 @@ local function BestBoost()
             end
         end
     end
+    if anyOnly then return bestAny end
     return bestOwned or bestAny
 end
 
@@ -468,7 +469,7 @@ end
 
 -- Best scroll or elixir for a stat at your level: the strongest you carry,
 -- otherwise the strongest known.
-local function BestScroll(stat)
+local function BestScroll(stat, anyOnly)
     local level = UnitLevel("player")
     local bestOwned, bestOwnedAmt, bestAny, bestAnyAmt
     for id, info in pairs(db.items) do
@@ -483,6 +484,7 @@ local function BestScroll(stat)
             end
         end
     end
+    if anyOnly then return bestAny end
     return bestOwned or bestAny, bestOwned ~= nil
 end
 
@@ -873,7 +875,7 @@ local function WeaponBuff()
 end
 
 -- Best stone for the weapon: one you carry first, then by level.
-local function BestStone(edge)
+local function BestStone(edge, anyOnly)
     local level, bestOwned, bestAny = UnitLevel("player"), nil, nil
     local function better(a, b)
         if not b then return true end
@@ -887,6 +889,7 @@ local function BestStone(edge)
             if (GetItemCountFn(id) or 0) > 0 and better(id, bestOwned) then bestOwned = id end
         end
     end
+    if anyOnly then return bestAny end
     return bestOwned or bestAny
 end
 
@@ -1702,9 +1705,11 @@ sep:SetColorTexture(0.22, 0.26, 0.32, 1)
 sep:SetHeight(1)
 sep:SetPoint("TOPLEFT", 18, -480)
 sep:SetPoint("TOPRIGHT", -18, -480)
-local dbBtn = FlatButton(settings, L["Database"], 175)
+local dbBtn = FlatButton(settings, L["Database"], 116)
 dbBtn:SetPoint("TOPLEFT", 18, -494)
-local statusBtn = FlatButton(settings, L["Status in chat"], 175)
+local shopBtn = FlatButton(settings, L["Shopping list"], 116)
+shopBtn:SetPoint("TOP", 0, -494)
+local statusBtn = FlatButton(settings, L["Status in chat"], 116)
 statusBtn:SetPoint("TOPRIGHT", -18, -494)
 statusBtn:SetScript("OnClick", function() if db and PrintStatus then PrintStatus() end end)
 
@@ -1822,6 +1827,355 @@ local function CreateMinimapButton()
     MinimapIcon()
     PlaceMinimapButton()
     MinimapButtonShown()
+end
+
+----------------------------------------------------------------------
+-- Shopping list: what to buy at the auction house, mailable to another
+-- character. The list is saved account-wide, so a non-hunter auction
+-- house character on the same account sees it too.
+----------------------------------------------------------------------
+
+local SHOP_ROWS = 10
+local SHOP_DEFAULTS = { food = 20, boost = 10, stat = 5, stone = 5 }
+local mailOpen, shopAuto = false, false
+
+-- the saved data: db on a hunter, SquaredAwayDB on other characters
+local function SDB() return db or SquaredAwayDB end
+
+local function ShopTarget(key)
+    local d = SDB()
+    local t = (d and d.shopTargets) or {}
+    return t[key] or SHOP_DEFAULTS[key]
+end
+
+-- Builds the list for the hunter and saves it for other characters.
+local function BuildShoppingList()
+    if not db then return end
+    local lines = {}
+    local function add(id, need, merge)
+        if not id or need <= 0 then return end
+        for _, l in ipairs(lines) do
+            if l.id == id then
+                l.need = merge == "max" and math.max(l.need, need) or l.need + need
+                return
+            end
+        end
+        lines[#lines + 1] = { id = id, need = need, name = (GetItemInfoFn(id)) or (L["item"] .. " " .. id) }
+    end
+    local function want(id, target)
+        if not id or target <= 0 then return 0 end
+        return math.max(0, target - (GetItemCountFn(id) or 0))
+    end
+
+    add(Best("food"), want(Best("food"), ShopTarget("food")))
+    local boost = BestBoost(true)
+    add(boost, want(boost, ShopTarget("boost")))
+    for _, st in ipairs(ns.SCROLL_STATS) do
+        local id = BestScroll(st.key, true)
+        add(id, want(id, ShopTarget("stat")), "max") -- one elixir can cover two stats
+    end
+    -- armor kits: one per slot without a kit or with a weaker one
+    local missing, weaker, perSlot = KitStatus()
+    local kitNeed = {}
+    for _, list in ipairs({ missing, weaker }) do
+        for _, label in ipairs(list) do
+            local id = perSlot[label]
+            if id then kitNeed[id] = (kitNeed[id] or 0) + 1 end
+        end
+    end
+    for id, n in pairs(kitNeed) do add(id, math.max(0, n - (GetItemCountFn(id) or 0))) end
+    -- sharpening stone, only if that icon is on
+    local edge = MeleeEdge()
+    if edge and Shown("stone") then
+        local id = BestStone(edge, true)
+        add(id, want(id, ShopTarget("stone")))
+    end
+
+    db.shopList = { char = UnitName("player"), level = UnitLevel("player"), time = time(), lines = lines }
+    return db.shopList
+end
+
+local shop = CreateFrame("Frame", "SquaredAwayShopping", UIParent,
+    BackdropTemplateMixin and "BackdropTemplate" or nil)
+shop:SetSize(360, 468)
+shop:SetPoint("CENTER", 220, 0)
+shop:SetFrameStrata("DIALOG")
+shop:SetMovable(true)
+shop:EnableMouse(true)
+shop:RegisterForDrag("LeftButton")
+shop:SetScript("OnDragStart", shop.StartMoving)
+shop:SetScript("OnDragStop", shop.StopMovingOrSizing)
+shop:SetClampedToScreen(true)
+Flat(shop, { 0.06, 0.07, 0.09, 0.97 }, { 0.22, 0.26, 0.32, 1 })
+shop:Hide()
+tinsert(UISpecialFrames, "SquaredAwayShopping")
+
+do
+    local bar = shop:CreateTexture(nil, "ARTWORK")
+    bar:SetColorTexture(0.10, 0.12, 0.15, 1)
+    bar:SetPoint("TOPLEFT", 1, -1)
+    bar:SetPoint("TOPRIGHT", -1, -1)
+    bar:SetHeight(36)
+    local line = shop:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.7)
+    line:SetPoint("TOPLEFT", bar, "BOTTOMLEFT")
+    line:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT")
+    line:SetHeight(1)
+    local t = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    t:SetPoint("LEFT", bar, "LEFT", 14, 0)
+    t:SetTextColor(1, 1, 1)
+    t:SetText(L["Shopping list"])
+    local x = CreateFrame("Button", nil, shop)
+    x:SetSize(28, 28)
+    x:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
+    x.text = x:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    x.text:SetPoint("CENTER")
+    x.text:SetText("X")
+    x.text:SetTextColor(0.6, 0.6, 0.6)
+    x:SetScript("OnEnter", function(self) self.text:SetTextColor(1, 1, 1) end)
+    x:SetScript("OnLeave", function(self) self.text:SetTextColor(0.6, 0.6, 0.6) end)
+    x:SetScript("OnClick", function() shop:Hide() end)
+end
+
+shop.sub = shop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+shop.sub:SetPoint("TOPLEFT", 16, -46)
+shop.sub:SetWidth(328)
+shop.sub:SetJustifyH("LEFT")
+
+shop.rows = {}
+for i = 1, SHOP_ROWS do
+    local r = CreateFrame("Button", nil, shop)
+    r:SetSize(328, 22)
+    r:SetPoint("TOPLEFT", 16, -64 - (i - 1) * 22)
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(18, 18)
+    r.icon:SetPoint("LEFT")
+    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+    r.name:SetWidth(250)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r.need = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.need:SetPoint("RIGHT", -2, 0)
+    r:SetScript("OnEnter", function(self)
+        if not self.id then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetHyperlink("item:" .. self.id)
+        GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    shop.rows[i] = r
+end
+shop.empty = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+shop.empty:SetPoint("TOPLEFT", 16, -70)
+shop.empty:SetText(L["Nothing to buy: everything is stocked."])
+
+-- targets (only on the hunter)
+shop.targets = CreateFrame("Frame", nil, shop)
+shop.targets:SetPoint("TOPLEFT", 0, -290)
+shop.targets:SetSize(360, 110)
+do
+    local h = shop.targets:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h:SetPoint("TOPLEFT", 18, 0)
+    h:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
+    h:SetText(L["How many to carry"]:upper())
+    local line = shop.targets:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.22, 0.26, 0.32, 1)
+    line:SetHeight(1)
+    line:SetPoint("LEFT", h, "RIGHT", 8, 0)
+    line:SetPoint("RIGHT", shop.targets, "RIGHT", -18, 0)
+end
+shop.steppers = {}
+local function Stepper(label, key, col, row, step, maxV)
+    local f = CreateFrame("Frame", nil, shop.targets)
+    f:SetSize(160, 24)
+    f:SetPoint("TOPLEFT", 18 + col * 170, -18 - row * 28)
+    local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text:SetPoint("LEFT")
+    text:SetText(label)
+    local value = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    value:SetPoint("RIGHT", -26, 0)
+    value:SetWidth(30)
+    local function btn(sign, x)
+        local b = FlatButton(f, sign, 22)
+        b:SetHeight(20)
+        b:SetPoint("RIGHT", x, 0)
+        b:SetScript("OnClick", function()
+            if not db then return end
+            db.shopTargets = db.shopTargets or {}
+            local v = ShopTarget(key) + (sign == "+" and step or -step)
+            db.shopTargets[key] = math.min(maxV, math.max(0, v))
+            shop:Refresh()
+        end)
+    end
+    btn("-", -58)
+    btn("+", 0)
+    f.Refresh = function() value:SetText(ShopTarget(key)) end
+    shop.steppers[#shop.steppers + 1] = f
+end
+Stepper(L["Food"], "food", 0, 0, 5, 60)
+Stepper(L["Agility"], "boost", 1, 0, 1, 20)
+Stepper(L["Stat buffs"], "stat", 0, 1, 1, 20)
+Stepper(L["Sharpening stone"], "stone", 1, 1, 1, 20)
+local targetsNote = shop.targets:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+targetsNote:SetPoint("TOPLEFT", 18, -78)
+targetsNote:SetWidth(324)
+targetsNote:SetJustifyH("LEFT")
+targetsNote:SetText(L["Stat buffs: per stat. Armor kits: one per slot that needs one."])
+
+-- recipient and mail button
+local mailLabel = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+mailLabel:SetPoint("BOTTOMLEFT", 18, 58)
+mailLabel:SetText(L["Mail to:"])
+local recipient = CreateFrame("EditBox", nil, shop, BackdropTemplateMixin and "BackdropTemplate" or nil)
+recipient:SetSize(170, 24)
+recipient:SetPoint("LEFT", mailLabel, "RIGHT", 10, 0)
+Flat(recipient, { 0.10, 0.12, 0.15, 1 }, { 0.35, 0.40, 0.48, 1 })
+recipient:SetFontObject("GameFontHighlight")
+recipient:SetTextInsets(8, 8, 0, 0)
+recipient:SetAutoFocus(false)
+recipient:SetMaxLetters(48)
+recipient:SetScript("OnEscapePressed", recipient.ClearFocus)
+recipient:SetScript("OnEnterPressed", recipient.ClearFocus)
+recipient:SetScript("OnTextChanged", function(self, user)
+    local d = SDB()
+    if user and d then d.shopRecipient = self:GetText():match("^%s*(.-)%s*$") end
+end)
+local mailBtn = FlatButton(shop, L["Fill mail"], 150)
+mailBtn:SetPoint("BOTTOMLEFT", 18, 18)
+local mailNote = shop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+mailNote:SetPoint("LEFT", mailBtn, "RIGHT", 12, 0)
+mailNote:SetWidth(170)
+mailNote:SetJustifyH("LEFT")
+
+-- Mail text in parts that fit the mail body.
+local function MailParts(list)
+    local maxLen = (SendMailBodyEditBox and SendMailBodyEditBox.GetMaxLetters and SendMailBodyEditBox:GetMaxLetters()) or 0
+    if maxLen <= 0 then maxLen = 500 end
+    local parts, cur = {}, ""
+    for _, l in ipairs(list.lines) do
+        local line = l.need .. "x " .. l.name .. "\n"
+        if #cur + #line > maxLen - 10 and cur ~= "" then
+            parts[#parts + 1] = cur
+            cur = ""
+        end
+        cur = cur .. line
+    end
+    if cur ~= "" then parts[#parts + 1] = cur end
+    return parts
+end
+
+local function FillMail()
+    local d = SDB()
+    local list = d and d.shopList
+    if not mailOpen or not list or #list.lines == 0 then return end
+    local to = d.shopRecipient or ""
+    if to == "" then
+        mailNote:SetText(L["Enter a recipient first."])
+        return
+    end
+    shop.parts = shop.parts or MailParts(list)
+    shop.part = shop.part or 1
+    local n, i = #shop.parts, shop.part
+    if MailFrameTab2 and MailFrameTab2.Click then MailFrameTab2:Click() end
+    if SendMailNameEditBox then SendMailNameEditBox:SetText(to) end
+    if SendMailSubjectEditBox then
+        SendMailSubjectEditBox:SetText(L["Shopping list"] .. " (" .. (list.char or "") .. ")"
+            .. (n > 1 and (" " .. i .. "/" .. n) or ""))
+    end
+    if SendMailBodyEditBox then SendMailBodyEditBox:SetText(shop.parts[i]) end
+    mailNote:SetText(L["Check the mail and press Send."])
+end
+mailBtn:SetScript("OnClick", FillMail)
+
+function shop:Refresh()
+    local d = SDB()
+    if not d then return end
+    local list = d.shopList
+    if db then list = BuildShoppingList() end
+    shop.parts, shop.part = nil, nil
+    local lines = list and list.lines or {}
+    for i, r in ipairs(shop.rows) do
+        local l = lines[i]
+        r.id = l and l.id
+        if l then
+            r.icon:SetTexture(GetItemIconFn(l.id) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            r.name:SetText((GetItemInfoFn(l.id)) or l.name)
+            r.need:SetText(l.need .. "x")
+            r:Show()
+        else
+            r:Hide()
+        end
+    end
+    shop.empty:SetShown(list ~= nil and #lines == 0)
+    if not list then
+        shop.sub:SetText(L["No list yet. Log in with your hunter once."])
+    elseif db then
+        shop.sub:SetText(L["For level %d. What is in your bags is already subtracted."]:format(list.level or UnitLevel("player")))
+    else
+        local mins = math.floor((time() - (list.time or time())) / 60)
+        shop.sub:SetText(L["From %s (level %d), %d min ago."]:format(list.char or "?", list.level or 0, mins))
+    end
+    if #lines > SHOP_ROWS then
+        shop.sub:SetText(shop.sub:GetText() .. " " .. L["(%d more in the mail)"]:format(#lines - SHOP_ROWS))
+    end
+    shop.targets:SetShown(db ~= nil)
+    if db then for _, st in ipairs(shop.steppers) do st:Refresh() end end
+    if not recipient:HasFocus() then recipient:SetText(d.shopRecipient or "") end
+    mailBtn:SetEnabled(mailOpen and #lines > 0)
+    mailBtn:SetAlpha((mailOpen and #lines > 0) and 1 or 0.5)
+    mailNote:SetText(mailOpen and "" or L["Open a mailbox to fill a mail."])
+end
+shop:SetScript("OnShow", function(self) self:Refresh() end)
+
+local function ToggleShopping()
+    if shop:IsShown() then shop:Hide() else shopAuto = false; shop:Show() end
+end
+
+-- At a mailbox or the auction house the list opens next to it by itself
+-- (if there is something on it) and closes again with it.
+local function ShopAutoOpen(anchor)
+    local d = SDB()
+    if db then BuildShoppingList() end
+    local list = d and d.shopList
+    if not list or #list.lines == 0 then return end
+    if not shop:IsShown() then
+        shopAuto = true
+        shop:ClearAllPoints()
+        if anchor and anchor:IsShown() then
+            shop:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 12, 0)
+        else
+            shop:SetPoint("CENTER", 220, 0)
+        end
+        shop:Show()
+    else
+        shop:Refresh()
+    end
+end
+
+local function ShopAutoClose()
+    if shopAuto then shop:Hide() end
+    shopAuto = false
+end
+
+local function ShopEvent(event)
+    if event == "MAIL_SHOW" then
+        mailOpen = true
+        ShopAutoOpen(MailFrame)
+    elseif event == "MAIL_CLOSED" then
+        mailOpen = false
+        if shop:IsShown() then shop:Refresh() end
+        ShopAutoClose()
+    elseif event == "MAIL_SEND_SUCCESS" then
+        if shop.parts and shop.part and shop.part < #shop.parts then
+            shop.part = shop.part + 1
+            mailNote:SetText(L["Part %d of %d: press Fill mail again."]:format(shop.part, #shop.parts))
+        end
+    elseif event == "AUCTION_HOUSE_SHOW" then
+        ShopAutoOpen(AuctionHouseFrame or AuctionFrame)
+    elseif event == "AUCTION_HOUSE_CLOSED" then
+        ShopAutoClose()
+    end
 end
 
 -- Entry in Esc > Options > AddOns: a short page with a button that opens
@@ -2199,6 +2553,11 @@ dbBtn:SetScript("OnClick", function()
     settings:Hide()
     OpenDB()
 end)
+shopBtn:SetScript("OnClick", function()
+    if not db then return end
+    settings:Hide()
+    ToggleShopping()
+end)
 
 -- Hint lines at the bottom of every icon tooltip. Right-click opens the
 -- settings, shift + right-click the database at that icon's list.
@@ -2275,13 +2634,25 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function(self, event, arg1)
+    if event:find("^MAIL_") or event:find("^AUCTION_HOUSE_") then
+        ShopEvent(event)
+        if disabled then return end
+    end
+    if event == "PLAYER_LOGOUT" then
+        if db then BuildShoppingList() end
+        return
+    end
     if event == "PLAYER_LOGIN" then
         -- Squared Away is made for hunters: on other classes it switches
         -- itself off completely and only says so once in chat.
         if select(2, UnitClass("player")) ~= "HUNTER" then
             disabled = true
             self:UnregisterAllEvents()
-            Print(L["is made for hunters and stays off on this character. Other classes will follow later."])
+            -- only the shopping list from the hunter, at mailbox and auction house
+            for _, e in ipairs({ "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED" }) do
+                pcall(self.RegisterEvent, self, e)
+            end
+            Print(L["is made for hunters. On this character only the shopping list is available (/sqa)."])
             return
         end
 
@@ -2333,6 +2704,9 @@ events:SetScript("OnEvent", function(self, event, arg1)
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
         self:RegisterEvent("BAG_UPDATE_DELAYED")
         self:RegisterEvent("MERCHANT_SHOW")
+        for _, e in ipairs({ "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "PLAYER_LOGOUT" }) do
+            pcall(self.RegisterEvent, self, e)
+        end
         self:RegisterEvent("MERCHANT_CLOSED")
         self:RegisterEvent("MERCHANT_UPDATE")
         self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -2446,7 +2820,11 @@ SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
 SlashCmdList.SQUAREDAWAY = function(msg)
     if disabled or not db then
-        Print(L["is made for hunters and stays off on this character. Other classes will follow later."])
+        if SquaredAwayDB and SquaredAwayDB.shopList then
+            ToggleShopping()
+        else
+            Print(L["is made for hunters. On this character only the shopping list is available (/sqa)."])
+        end
         return
     end
     msg = (msg or ""):lower():match("^%s*(.-)%s*$")
@@ -2475,6 +2853,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         else
             Print(L["use: /sqa ammo <stacks>  (0 = fill the quiver)"])
         end
+    elseif cmd == "shop" or cmd == "list2" then
+        ToggleShopping()
     elseif cmd == "db" or cmd == "database" then
         ToggleDB(ICON_TAB[arg])
     elseif cmd == "hide" or cmd == "show" then

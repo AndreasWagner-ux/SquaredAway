@@ -2,7 +2,7 @@
 
 A small reminder bar for **WoW Forever**. It shows at a glance whether you are ready for the next fight, and what would be good to have at your current level.
 
-> Early version (alpha). Made for hunters: on other classes the addon switches itself off and only says so once in chat. Other classes will follow.
+> Early version (alpha). Made for hunters: on other classes only the shopping list is available. Other classes will follow.
 
 ## What it checks
 
@@ -28,6 +28,16 @@ Hover over an icon to see the best food, kit or elixir/scroll for your level and
 **Sharpening stone (off by default):** for your melee weapon only. Shows whether a sharpening stone or weightstone is on your main hand weapon, with a countdown, and suggests the best one for your weapon and level. Switch it on in the settings or with `/sqa show stone`.
 
 The icons hide in combat. Squared Away never buys or uses anything by itself. The only purchase happens when you left-click the ammo icon at a vendor.
+
+## Shopping list
+
+The shopping list shows what to buy at the auction house for your level: the best food, agility elixir or scroll, one item per stat buff, armor kits for slots that need one, and a sharpening stone if that icon is on. What you already carry is subtracted. Set how many of each you want to carry in the list window.
+
+At a mailbox, **Fill mail** puts the recipient (saved), a subject and the list into the mail form; you only press Send. Long lists are split into several mails.
+
+The list is saved for your whole account. Log in with your auction house character on the same account: the list opens by itself at the auction house and at the mailbox, and `/sqa` opens it. On characters that are not hunters, the shopping list is the only thing Squared Away shows.
+
+Open it with the Shopping list button in the settings or `/sqa shop`.
 
 ## Languages
 
