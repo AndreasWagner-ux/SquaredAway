@@ -17,7 +17,7 @@ A small reminder bar for **WoW Forever**. It shows at a glance whether you are r
 
 **Aspect reminder (hunters):** while no aspect is active, a flashing "No aspect active!" appears in the middle of the screen, in and out of combat, until you choose one. It stays away while you are dead or on a flight path, and before you have learned your first aspect. Switch it off in the settings or with `/sqa hide aspect`.
 
-**Ammo:** the icon shows how many arrows or bullets you carry and how full your quiver or ammo pouch is. Hover it for the ammo you use, its damage per second, and better ammo for your level. At a vendor that sells ammo for your weapon, the icon shows **+N**: left-click it to buy the best ammo the vendor has for your level, enough to fill the free quiver slots (whole stacks, never more than your gold allows). Without a quiver, two stacks count as full. `/sqa ammo 4` carries 4 stacks instead, `/sqa ammo 0` fills the quiver again.
+**Ammo:** the icon shows how many arrows or bullets you carry and how full your quiver or ammo pouch is. Hover it for the ammo you use, its damage per second, and better ammo for your level. At a vendor that sells ammo for your weapon, the icon shows **+N**: left-click it to buy the best ammo the vendor has for your level, enough to fill the free quiver slots (whole stacks, never more than your gold allows). If the vendor only has weaker ammo than the ammo you shoot, a window explains it and lets you buy it anyway, so you do not run out in the wild. Without a quiver, two stacks count as full. `/sqa ammo 4` carries 4 stacks instead, `/sqa ammo 0` fills the quiver again.
 
 Agility scrolls are not part of the stat scrolls icon: they share the agility icon with agility elixirs, because the two do not stack.
 

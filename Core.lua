@@ -733,6 +733,11 @@ local function ScanMerchantAmmo()
     best.amount = amount
     best.cost = math.floor(amount * best.pricePerItem + 0.5)
     best.stack = StackSize(best.id)
+    -- weaker than the ammo you shoot now?
+    if st and st.main and st.main ~= best.id and BetterAmmo(st.main, best.id) then
+        best.worse = true
+        best.current = st.main
+    end
     ammoOffer = best
 end
 
@@ -741,13 +746,38 @@ local function MoneyText(copper)
     return string.format("%dg %ds %dc", copper / 10000, (copper / 100) % 100, copper % 100)
 end
 
--- One click: buys the offered ammo, a stack at a time.
-local function BuyAmmo()
+local BuyAmmo
+
+-- Asked before buying ammo that is weaker than the ammo you shoot now.
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs["SQUAREDAWAY_WORSE_AMMO"] = {
+    text = "%s",
+    button1 = L["Buy anyway"],
+    button2 = CANCEL or "Cancel",
+    OnAccept = function() BuyAmmo(true) end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- One click: buys the offered ammo, a stack at a time. Weaker ammo than
+-- yours is only bought after you confirm it in a window (force = true).
+function BuyAmmo(force)
     if buying or not merchantOpen then return end
     ScanMerchantAmmo()
     local offer = ammoOffer
     if not offer or offer.amount <= 0 then
         Print(L["Nothing to buy: your quiver is full or you need more gold."])
+        return
+    end
+    if offer.worse and not force then
+        local yours, theirs = AmmoDPS(offer.current), AmmoDPS(offer.id)
+        local text = L["This vendor only has weaker ammo than yours."] .. "\n\n"
+            .. L["Yours: %s"]:format(ItemText(offer.current)) .. (yours > 0 and (" (" .. L["%.1f damage per second"]:format(yours) .. ")") or "") .. "\n"
+            .. L["Vendor: %s"]:format(ItemText(offer.id)) .. (theirs > 0 and (" (" .. L["%.1f damage per second"]:format(theirs) .. ")") or "") .. "\n\n"
+            .. L["Buy it anyway, so you do not run out in the wild? %d for %s."]:format(offer.amount, MoneyText(offer.cost))
+        StaticPopup_Show("SQUAREDAWAY_WORSE_AMMO", text)
         return
     end
     local maxStack = (GetMerchantItemMaxStack and GetMerchantItemMaxStack(offer.index)) or offer.stack
@@ -824,11 +854,24 @@ local function MakeButton(fallbackIcon, withTimer)
     b.fallback = fallbackIcon
     b.status = b:CreateTexture(nil, "OVERLAY")
     b.status:SetSize(18, 18)
-    b.status:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 4, -4)
+    b.status:SetPoint("TOPRIGHT", b, "TOPRIGHT", 4, 4)
     if withTimer then
-        b.timer = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalLarge")
-        b.timer:SetPoint("CENTER", b, "CENTER", 0, 0)
-        b.timer:SetShadowOffset(1, -1)
+        -- the number sits on a dark strip at the bottom of the icon
+        b.strip = b:CreateTexture(nil, "OVERLAY")
+        b.strip:SetColorTexture(0, 0, 0, 0.7)
+        b.strip:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+        b.strip:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+        b.strip:SetHeight(14)
+        b.strip:Hide()
+        b.timer = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        b.timer:SetDrawLayer("OVERLAY", 7)
+        local font = b.timer:GetFont()
+        b.timer:SetFont(font or STANDARD_TEXT_FONT, 12, "OUTLINE")
+        b.timer:SetPoint("CENTER", b.strip, "CENTER", 0, 0)
+        b.SetTimer = function(self, text)
+            self.timer:SetText(text or "")
+            self.strip:SetShown(text ~= nil and text ~= "")
+        end
     end
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function()
@@ -862,10 +905,10 @@ end
 local function UpdateTimer(b)
     local text, left = TimeLeftText(b.expires)
     if not text then
-        b.timer:SetText("")
+        b:SetTimer("")
         return
     end
-    b.timer:SetText(text)
+    b:SetTimer(text)
     if left < 60 then
         b.timer:SetTextColor(1, 0.3, 0.3)
     elseif left < 180 then
@@ -1026,15 +1069,31 @@ ammoButton:SetScript("OnEnter", function(self)
         GameTooltip:AddLine(st.kind == "arrow" and L["No quiver: counting 2 stacks as full."]
             or L["No ammo pouch: counting 2 stacks as full."], 0.7, 0.7, 0.7, true)
     end
+    -- better ammo already in the bags, but not the one you shoot
+    local equipped = GetInventoryItemID("player", AMMO_SLOT)
+    local bestOwned
+    for id in pairs(st.counts) do
+        if BetterAmmo(id, bestOwned) then bestOwned = id end
+    end
+    if equipped and bestOwned and bestOwned ~= equipped and BetterAmmo(bestOwned, equipped) then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["Better ammo in your bags:"], 1, 0.82, 0)
+        GameTooltip:AddLine(ItemText(bestOwned))
+        GameTooltip:AddLine(L["Right-click it in your bags to use it."], 0.7, 0.7, 0.7, true)
+    end
     local best = BestKnownAmmo(st.kind)
-    if best and st.main and best ~= st.main and BetterAmmo(best, st.main) then
+    if best and st.main and best ~= st.main and BetterAmmo(best, st.main) and not st.counts[best] then
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(L["Better ammo for your level:"], 1, 0.82, 0)
         GameTooltip:AddLine(ItemText(best))
     end
     if merchantOpen then
         GameTooltip:AddLine(" ")
-        if ammoOffer and ammoOffer.amount > 0 then
+        if ammoOffer and ammoOffer.amount > 0 and ammoOffer.worse then
+            GameTooltip:AddLine(L["This vendor only has weaker ammo than yours:"], 1, 0.82, 0, true)
+            GameTooltip:AddLine(ItemText(ammoOffer.id))
+            GameTooltip:AddLine(L["Left-click: buy anyway (asks first)"], 0.7, 0.7, 0.7)
+        elseif ammoOffer and ammoOffer.amount > 0 then
             GameTooltip:AddLine(L["This vendor sells:"], 0.4, 1, 0.4)
             GameTooltip:AddLine(ItemText(ammoOffer.id))
             GameTooltip:AddLine(L["Left-click: buy %d for %s"]:format(ammoOffer.amount, MoneyText(ammoOffer.cost)), 0.4, 1, 0.4)
@@ -1188,7 +1247,7 @@ local function Update()
         end
         SetState(scrollButton, scrollActive == #scrollList and "ok" or scrollActive > 0 and "warn" or "missing",
             firstMissing)
-        scrollButton.timer:SetText(scrollActive .. "/" .. #scrollList)
+        scrollButton:SetTimer(scrollActive .. "/" .. #scrollList)
         scrollButton.timer:SetTextColor(1, 1, 1)
     end
 
@@ -1198,12 +1257,13 @@ local function Update()
     if ammo then
         if merchantOpen and ammoOffer and ammoOffer.amount > 0 then
             SetState(ammoButton, "warn", ammoOffer.id)
-            ammoButton.timer:SetText("+" .. ShortCount(ammoOffer.amount))
-            ammoButton.timer:SetTextColor(0.4, 1, 0.4)
+            ammoButton:SetTimer("+" .. ShortCount(ammoOffer.amount))
+            if ammoOffer.worse then ammoButton.timer:SetTextColor(0.6, 0.6, 0.6)
+            else ammoButton.timer:SetTextColor(0.4, 1, 0.4) end
         else
             local state = (ammo.count < 200 or ammo.ratio < 0.15) and "missing" or ammo.ratio < 0.5 and "warn" or "ok"
             SetState(ammoButton, state, ammo.main)
-            ammoButton.timer:SetText(ShortCount(ammo.count))
+            ammoButton:SetTimer(ShortCount(ammo.count))
             if state == "missing" then ammoButton.timer:SetTextColor(1, 0.3, 0.3)
             elseif state == "warn" then ammoButton.timer:SetTextColor(1, 0.82, 0)
             else ammoButton.timer:SetTextColor(1, 1, 1) end

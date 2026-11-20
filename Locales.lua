@@ -163,4 +163,13 @@ if locale == "deDE" then
     L["ammo: carry %d stacks."] = "Munition: %d Stapel mitnehmen."
     L["ammo: fill the quiver."] = "Munition: Köcher füllen."
     L["use: /sqa ammo <stacks>  (0 = fill the quiver)"] = "Verwendung: /sqa ammo <Stapel>  (0 = Köcher füllen)"
+    L["Buy anyway"] = "Trotzdem kaufen"
+    L["This vendor only has weaker ammo than yours."] = "Dieser Händler hat nur schwächere Munition als deine."
+    L["Yours: %s"] = "Deine: %s"
+    L["Vendor: %s"] = "Händler: %s"
+    L["Buy it anyway, so you do not run out in the wild? %d for %s."] = "Trotzdem kaufen, damit sie dir unterwegs nicht ausgeht? %d für %s."
+    L["This vendor only has weaker ammo than yours:"] = "Dieser Händler hat nur schwächere Munition als deine:"
+    L["Left-click: buy anyway (asks first)"] = "Linksklick: trotzdem kaufen (fragt vorher)"
+    L["Better ammo in your bags:"] = "Bessere Munition in deinen Taschen:"
+    L["Right-click it in your bags to use it."] = "Rechtsklick in der Tasche, um sie zu verwenden."
 end
