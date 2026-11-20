@@ -113,22 +113,57 @@ ns.ITEMS = {
     [250350] = { kind = "boost", sub = "elixir", lvl = 55, ilvl = 55, amount = 18, spell = 1250985 }, -- Elixir of Ferocity
     [10309] = { kind = "boost", sub = "scroll", lvl = 55, ilvl = 65, amount = 17, spell = 12174 }, -- Scroll of Agility IV
     -- scroll
-    [3013] = { kind = "scroll", stat = "armor", lvl = 1, ilvl = 10, amount = 60, spell = 8091 }, -- Scroll of Protection
-    [955] = { kind = "scroll", stat = "intellect", lvl = 5, ilvl = 15, amount = 4, spell = 8096 }, -- Scroll of Intellect
-    [1180] = { kind = "scroll", stat = "stamina", lvl = 5, ilvl = 15, amount = 4, spell = 8099 }, -- Scroll of Stamina
-    [954] = { kind = "scroll", stat = "strength", lvl = 10, ilvl = 20, amount = 5, spell = 8118 }, -- Scroll of Strength
-    [1478] = { kind = "scroll", stat = "armor", lvl = 15, ilvl = 25, amount = 120, spell = 8094 }, -- Scroll of Protection II
-    [2290] = { kind = "scroll", stat = "intellect", lvl = 20, ilvl = 30, amount = 8, spell = 8097 }, -- Scroll of Intellect II
-    [1711] = { kind = "scroll", stat = "stamina", lvl = 20, ilvl = 30, amount = 8, spell = 8100 }, -- Scroll of Stamina II
-    [2289] = { kind = "scroll", stat = "strength", lvl = 25, ilvl = 35, amount = 9, spell = 8119 }, -- Scroll of Strength II
-    [4421] = { kind = "scroll", stat = "armor", lvl = 30, ilvl = 40, amount = 180, spell = 8095 }, -- Scroll of Protection III
-    [4419] = { kind = "scroll", stat = "intellect", lvl = 35, ilvl = 45, amount = 12, spell = 8098 }, -- Scroll of Intellect III
-    [4422] = { kind = "scroll", stat = "stamina", lvl = 35, ilvl = 45, amount = 12, spell = 8101 }, -- Scroll of Stamina III
-    [4426] = { kind = "scroll", stat = "strength", lvl = 40, ilvl = 50, amount = 13, spell = 8120 }, -- Scroll of Strength III
-    [10305] = { kind = "scroll", stat = "armor", lvl = 45, ilvl = 55, amount = 240, spell = 12175 }, -- Scroll of Protection IV
-    [10308] = { kind = "scroll", stat = "intellect", lvl = 50, ilvl = 60, amount = 16, spell = 12176 }, -- Scroll of Intellect IV
-    [10307] = { kind = "scroll", stat = "stamina", lvl = 50, ilvl = 60, amount = 16, spell = 12178 }, -- Scroll of Stamina IV
-    [10310] = { kind = "scroll", stat = "strength", lvl = 55, ilvl = 65, amount = 17, spell = 12179 }, -- Scroll of Strength IV
+    [5997] = { kind = "scroll", sub = "elixir", stats = { armor = 50 }, lvl = 1, ilvl = 5, spell = 673 }, -- Elixir of Minor Defense
+    [2454] = { kind = "scroll", sub = "elixir", stats = { strength = 4 }, lvl = 1, ilvl = 5, spell = 2367 }, -- Elixir of Minor Strength
+    [3013] = { kind = "scroll", sub = "scroll", stats = { armor = 60 }, lvl = 1, ilvl = 10, spell = 8091 }, -- Scroll of Protection
+    [2458] = { kind = "scroll", sub = "elixir", stats = { stamina = 3 }, lvl = 2, ilvl = 12, spell = 2378 }, -- Elixir of Minor Fortitude
+    [955] = { kind = "scroll", sub = "scroll", stats = { intellect = 4 }, lvl = 5, ilvl = 15, spell = 8096 }, -- Scroll of Intellect
+    [1180] = { kind = "scroll", sub = "scroll", stats = { stamina = 4 }, lvl = 5, ilvl = 15, spell = 8099 }, -- Scroll of Stamina
+    [3383] = { kind = "scroll", sub = "elixir", stats = { intellect = 3 }, lvl = 10, ilvl = 20, spell = 3166 }, -- Elixir of Wisdom
+    [954] = { kind = "scroll", sub = "scroll", stats = { strength = 5 }, lvl = 10, ilvl = 20, spell = 8118 }, -- Scroll of Strength
+    [1478] = { kind = "scroll", sub = "scroll", stats = { armor = 120 }, lvl = 15, ilvl = 25, spell = 8094 }, -- Scroll of Protection II
+    [3389] = { kind = "scroll", sub = "elixir", stats = { armor = 150 }, lvl = 16, ilvl = 26, spell = 3220 }, -- Elixir of Lesser Defense
+    [3391] = { kind = "scroll", sub = "elixir", stats = { strength = 8 }, lvl = 20, ilvl = 30, spell = 3164 }, -- Elixir of Ogre Strength
+    [2290] = { kind = "scroll", sub = "scroll", stats = { intellect = 8 }, lvl = 20, ilvl = 30, spell = 8097 }, -- Scroll of Intellect II
+    [1711] = { kind = "scroll", sub = "scroll", stats = { stamina = 8 }, lvl = 20, ilvl = 30, spell = 8100 }, -- Scroll of Stamina II
+    [3825] = { kind = "scroll", sub = "elixir", stats = { stamina = 12 }, lvl = 25, ilvl = 35, spell = 3593 }, -- Elixir of Lesser Fortitude
+    [250353] = { kind = "scroll", sub = "elixir", stats = { intellect = 6 }, lvl = 25, ilvl = 25, spell = 1250988 }, -- Elixir of Lesser Intellect
+    [2289] = { kind = "scroll", sub = "scroll", stats = { strength = 9 }, lvl = 25, ilvl = 35, spell = 8119 }, -- Scroll of Strength II
+    [8951] = { kind = "scroll", sub = "elixir", stats = { armor = 250 }, lvl = 29, ilvl = 39, spell = 11349 }, -- Elixir of Defense
+    [4421] = { kind = "scroll", sub = "scroll", stats = { armor = 180 }, lvl = 30, ilvl = 40, spell = 8095 }, -- Scroll of Protection III
+    [4419] = { kind = "scroll", sub = "scroll", stats = { intellect = 12 }, lvl = 35, ilvl = 45, spell = 8098 }, -- Scroll of Intellect III
+    [4422] = { kind = "scroll", sub = "scroll", stats = { stamina = 12 }, lvl = 35, ilvl = 45, spell = 8101 }, -- Scroll of Stamina III
+    [9179] = { kind = "scroll", sub = "elixir", stats = { intellect = 25 }, lvl = 37, ilvl = 47, spell = 11396 }, -- Elixir of Greater Intellect
+    [13447] = { kind = "scroll", sub = "elixir", stats = { intellect = 18 }, lvl = 38, ilvl = 44, spell = 17535 }, -- Elixir of the Sages
+    [4426] = { kind = "scroll", sub = "scroll", stats = { strength = 13 }, lvl = 40, ilvl = 50, spell = 8120 }, -- Scroll of Strength III
+    [13445] = { kind = "scroll", sub = "elixir", stats = { armor = 450 }, lvl = 43, ilvl = 53, spell = 11348 }, -- Elixir of Greater Defense
+    [13453] = { kind = "scroll", sub = "elixir", stats = { stamina = 18, strength = 18 }, lvl = 45, ilvl = 55, spell = 17537 }, -- Elixir of Brute Force
+    [250334] = { kind = "scroll", sub = "elixir", stats = { stamina = 20 }, lvl = 45, ilvl = 45, spell = 1250928 }, -- Elixir of Fortitude
+    [250354] = { kind = "scroll", sub = "elixir", stats = { intellect = 10 }, lvl = 45, ilvl = 45, spell = 1250989 }, -- Elixir of Intellect
+    [250349] = { kind = "scroll", sub = "elixir", stats = { strength = 10 }, lvl = 45, ilvl = 45, spell = 1250984 }, -- Elixir of Strength
+    [10305] = { kind = "scroll", sub = "scroll", stats = { armor = 240 }, lvl = 45, ilvl = 55, spell = 12175 }, -- Scroll of Protection IV
+    [9206] = { kind = "scroll", sub = "elixir", stats = { strength = 25 }, lvl = 48, ilvl = 48, spell = 11405 }, -- Elixir of Greater Strength
+    [10308] = { kind = "scroll", sub = "scroll", stats = { intellect = 16 }, lvl = 50, ilvl = 60, spell = 12176 }, -- Scroll of Intellect IV
+    [10307] = { kind = "scroll", sub = "scroll", stats = { stamina = 16 }, lvl = 50, ilvl = 60, spell = 12178 }, -- Scroll of Stamina IV
+    [250335] = { kind = "scroll", sub = "elixir", stats = { stamina = 40 }, lvl = 55, ilvl = 55, spell = 1250931 }, -- Elixir of Greater Fortitude
+    [250351] = { kind = "scroll", sub = "elixir", stats = { strength = 25 }, lvl = 55, ilvl = 55, spell = 1250986 }, -- Elixir of the Grizzly
+    [250337] = { kind = "scroll", sub = "elixir", stats = { intellect = 25 }, lvl = 55, ilvl = 55, spell = 1250940 }, -- Elixir of the Owl
+    [250329] = { kind = "scroll", sub = "elixir", stats = { armor = 500, stamina = 40 }, lvl = 55, ilvl = 55, spell = 1250920 }, -- Elixir of the Phalanx
+    [10310] = { kind = "scroll", sub = "scroll", stats = { strength = 17 }, lvl = 55, ilvl = 65, spell = 12179 }, -- Scroll of Strength IV
+    -- stone
+    [287980] = { kind = "stone", sub = "sharp", lvl = 1, ilvl = 60 }, -- Elemental Sharpening Stone
+    [2862] = { kind = "stone", sub = "sharp", lvl = 1, ilvl = 5 }, -- Rough Sharpening Stone
+    [287978] = { kind = "stone", sub = "sharp", lvl = 1, ilvl = 5 }, -- Rough Sharpening Stone
+    [3239] = { kind = "stone", sub = "blunt", lvl = 1, ilvl = 5 }, -- Rough Weightstone
+    [2863] = { kind = "stone", sub = "sharp", lvl = 5, ilvl = 15 }, -- Coarse Sharpening Stone
+    [3240] = { kind = "stone", sub = "blunt", lvl = 5, ilvl = 15 }, -- Coarse Weightstone
+    [2871] = { kind = "stone", sub = "sharp", lvl = 15, ilvl = 25 }, -- Heavy Sharpening Stone
+    [3241] = { kind = "stone", sub = "blunt", lvl = 15, ilvl = 25 }, -- Heavy Weightstone
+    [7964] = { kind = "stone", sub = "sharp", lvl = 25, ilvl = 35 }, -- Solid Sharpening Stone
+    [7965] = { kind = "stone", sub = "blunt", lvl = 25, ilvl = 35 }, -- Solid Weightstone
+    [12404] = { kind = "stone", sub = "sharp", lvl = 35, ilvl = 45 }, -- Dense Sharpening Stone
+    [12643] = { kind = "stone", sub = "blunt", lvl = 35, ilvl = 45 }, -- Dense Weightstone
+    [18262] = { kind = "stone", sub = "sharp", lvl = 50, ilvl = 60 }, -- Elemental Sharpening Stone
     -- ammo
     [3465] = { kind = "ammo", sub = "bullet", lvl = 0, ilvl = 36 }, -- Exploding Shot
     [3464] = { kind = "ammo", sub = "arrow", lvl = 0, ilvl = 35 }, -- Feathered Arrow

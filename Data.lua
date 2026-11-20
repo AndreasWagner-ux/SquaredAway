@@ -7,14 +7,14 @@
 
 local ADDON, ns = ...
 
--- Which scroll stats count for the scroll icon, the tooltip words that
+-- Which stats count for the stat buffs icon (scroll or elixir per stat), the tooltip words that
 -- identify them (English, German), and class buffs that already cover the
 -- stat (a scroll would not stack with them).
 ns.SCROLL_STATS = {
     { key = "stamina",   label = "Stamina",    words = { "stamina", "ausdauer" },
       coveredBy = { 1243, 21562 } },  -- Power Word: Fortitude, Prayer of Fortitude
     { key = "strength",  label = "Strength",   words = { "strength", "stärke" } },
-    { key = "armor",     label = "Protection", words = { "armor", "rüstung" } },
+    { key = "armor",     label = "Armor",      words = { "armor", "rüstung" } },
     { key = "intellect", label = "Intellect",  words = { "intellect", "intelligenz" },
       coveredBy = { 1459, 23028 } },  -- Arcane Intellect, Arcane Brilliance
 }

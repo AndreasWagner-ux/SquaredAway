@@ -109,6 +109,30 @@ def food_score(buff):
     return score
 
 
+def elixir_stats(text):
+    """Stats an elixir gives that the stat buffs icon counts, or None.
+    Maximum health counts as stamina (10 health = 1 stamina)."""
+    if "2 min" in text or "against demons" in text:
+        return None
+    stats = {}
+    hp = num(r"maximum health by (\d+)", text) or num(r"gain (\d+) maximum health", text)
+    sta = num(r"stamina by (\d+)", text)
+    if hp:
+        stats["stamina"] = round(hp / 10)
+    elif sta:
+        stats["stamina"] = sta
+    strength = num(r"strength(?: and stamina)? by (\d+)", text)
+    if strength:
+        stats["strength"] = strength
+    armor = num(r"armor by (\d+)", text) or num(r"(\d+) armor", text)
+    if armor:
+        stats["armor"] = armor
+    intellect = num(r"intellect(?: and spirit)? by (\d+)", text)
+    if intellect:
+        stats["intellect"] = intellect
+    return stats or None
+
+
 def main():
     # 1. every consumable, page by page
     items, offset, build = [], 0, None
@@ -138,7 +162,8 @@ def main():
             if m.group(1) == "Agility":
                 f.update(kind="boost", sub="scroll")
             else:
-                f.update(kind="scroll", stat={"Protection": "armor"}.get(m.group(1), m.group(1).lower()))
+                stat = {"Protection": "armor"}.get(m.group(1), m.group(1).lower())
+                f.update(kind="scroll", sub="scroll", stats={stat: f.pop("amount") or 0})
             out[iid] = (i, f)
 
         # armor kits
@@ -157,6 +182,10 @@ def main():
             eff = effects(iid)
             text = " ".join(t for t, _ in eff)
             if "agility" not in text:
+                stats = elixir_stats(text)
+                if stats:
+                    out[iid] = (i, dict(base, kind="scroll", sub="elixir", stats=stats,
+                                        spell=eff[0][1] if eff else None))
                 continue
             amount = (num(r"agility(?: and \w+)? by (\d+)", text) or num(r"(\d+) agility", text)
                       or num(r"by (\d+)", text))
@@ -171,7 +200,15 @@ def main():
             if score > 0:
                 out[iid] = (i, dict(base, kind="food", score=score))
 
-    # 6. arrows and bullets (class 6 = Projectile); damage comes from the game
+    # 6. sharpening stones and weightstones (temporary melee weapon buffs)
+    for i in items:
+        name = i["name"]
+        if i["subclass"] == "Other" and (name.endswith("Sharpening Stone") or name.endswith("Weightstone")) \
+                and not name.startswith("Consecrated") and "Writ" not in name:
+            out[i["id"]] = (i, dict(kind="stone", sub="blunt" if name.endswith("Weightstone") else "sharp",
+                                    lvl=i.get("requiredLevel") or 0, ilvl=i.get("itemLevel") or 0))
+
+    # 7. arrows and bullets (class 6 = Projectile); damage comes from the game
     offset = 0
     while True:
         page = get("items?class=6&limit=100&offset=%d" % offset)
@@ -194,6 +231,8 @@ def main():
 
 
 def lua_value(v):
+    if isinstance(v, dict):
+        return "{ " + ", ".join("%s = %s" % (k, lua_value(x)) for k, x in sorted(v.items())) + " }"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
@@ -201,8 +240,8 @@ def lua_value(v):
     return '"%s"' % v
 
 
-ORDER = ("kind", "sub", "stat", "lvl", "ilvl", "score", "amount", "armor", "minIlvl", "caster", "spell")
-KIND_ORDER = {"food": 0, "kit": 1, "boost": 2, "scroll": 3, "ammo": 4}
+ORDER = ("kind", "sub", "stats", "lvl", "ilvl", "score", "amount", "armor", "minIlvl", "caster", "spell")
+KIND_ORDER = {"food": 0, "kit": 1, "boost": 2, "scroll": 3, "stone": 4, "ammo": 5}
 
 
 def write(build, out):
