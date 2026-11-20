@@ -50,6 +50,7 @@ Squared Away starts with a list of item IDs from ForeverDB.net (food, armor kits
 ## Usage
 
 - **Settings:** type `/sqa`, right-click an icon, or open Esc > Options > AddOns > Squared Away. Everything is set in that window: which icons are shown, the aspect reminder, how much ammo to carry, lock the bar, icon size and position. It also has buttons for the database and a status report in chat.
+- **Minimap button:** left-click shows or hides the bar, right-click opens the settings, drag it to move it around the minimap. It shows an arrow for bows and crossbows and a rifle for guns. Switch it off in the settings.
 - **Move the bar:** left-click and hold an icon, then drag (unless the bar is locked).
 - **Database:** shift + right-click an icon, or the Database button in the settings.
 

@@ -44,6 +44,7 @@ local db
 local disabled = false -- true on non-hunters: the addon stays off
 local pending = {}
 local QueueUpdate -- set further down
+local MinimapIcon -- set with the minimap button
 local isHunter = false
 
 local function Print(msg)
@@ -1362,6 +1363,8 @@ local function Update()
         scrollButton.timer:SetTextColor(1, 1, 1)
     end
 
+    if MinimapIcon then MinimapIcon() end
+
     -- ammo: count in the icon; at a vendor "+N" and a click buys
     local ammo = AmmoStatus(ammoOffer and ammoOffer.id)
     ammoButton.empty = ammo == nil
@@ -1404,7 +1407,7 @@ local function Update()
     -- layout: visible icons side by side
     local x = 0
     for _, e in ipairs(buttons) do
-        if Shown(e.key) and (not e.hunterOnly or isHunter) and not e.button.empty then
+        if Shown(e.key) and not db.barHidden and (not e.hunterOnly or isHunter) and not e.button.empty then
             e.button:ClearAllPoints()
             e.button:SetPoint("LEFT", frame, "LEFT", x, 0)
             e.button:Show()
@@ -1445,7 +1448,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(400, 560)
+settings:SetSize(400, 584)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -1660,13 +1663,23 @@ noQuiverText:SetJustifyH("LEFT")
 
 -- bar
 Heading(L["Bar"], -338)
-Toggle(L["Lock bar"], 18, -356,
+Toggle(L["Show bar"], 18, -356,
+    function() return not db.barHidden end,
+    function(on) db.barHidden = (not on) or nil end)
+Toggle(L["Lock bar"], 210, -356,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
+local MinimapButtonShown -- set with the minimap button below
+Toggle(L["Minimap button"], 18, -380,
+    function() return not db.minimapHidden end,
+    function(on)
+        db.minimapHidden = (not on) or nil
+        if MinimapButtonShown then MinimapButtonShown() end
+    end)
 local sizeLabel = settings:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-sizeLabel:SetPoint("TOPLEFT", 18, -386)
+sizeLabel:SetPoint("TOPLEFT", 18, -410)
 sizeLabel:SetText(L["Icon size"])
-Slider(110, -386, 140, 24, 64, 2,
+Slider(110, -410, 140, 24, 64, 2,
     function() return math.floor((db.iconScale or 1) * ICON_SIZE + 0.5) end,
     function(v)
         v = math.min(64, math.max(24, v))
@@ -1675,7 +1688,7 @@ Slider(110, -386, 140, 24, 64, 2,
     end,
     function(v) return v .. " px" end)
 local resetBtn = FlatButton(settings, L["Reset position"], 160)
-resetBtn:SetPoint("TOPLEFT", 18, -414)
+resetBtn:SetPoint("TOPLEFT", 18, -438)
 resetBtn:SetScript("OnClick", function()
     if not db then return end
     db.pos = nil
@@ -1687,12 +1700,12 @@ end)
 local sep = settings:CreateTexture(nil, "ARTWORK")
 sep:SetColorTexture(0.22, 0.26, 0.32, 1)
 sep:SetHeight(1)
-sep:SetPoint("TOPLEFT", 18, -456)
-sep:SetPoint("TOPRIGHT", -18, -456)
+sep:SetPoint("TOPLEFT", 18, -480)
+sep:SetPoint("TOPRIGHT", -18, -480)
 local dbBtn = FlatButton(settings, L["Database"], 175)
-dbBtn:SetPoint("TOPLEFT", 18, -470)
+dbBtn:SetPoint("TOPLEFT", 18, -494)
 local statusBtn = FlatButton(settings, L["Status in chat"], 175)
-statusBtn:SetPoint("TOPRIGHT", -18, -470)
+statusBtn:SetPoint("TOPRIGHT", -18, -494)
 statusBtn:SetScript("OnClick", function() if db and PrintStatus then PrintStatus() end end)
 
 -- footer
@@ -1730,6 +1743,85 @@ controls[#controls + 1] = { Refresh = RefreshAmmoSlider }
 
 local function ToggleSettings()
     if settings:IsShown() then settings:Hide() else settings:Show() end
+end
+
+-- Minimap button: left-click shows or hides the bar, right-click opens the
+-- settings, drag moves it around the minimap. Arrow icon for bows and
+-- crossbows, rifle icon for guns.
+local mmButton
+
+local function PlaceMinimapButton()
+    if not mmButton then return end
+    local a = math.rad(db.minimapAngle or 220)
+    local r = (Minimap:GetWidth() / 2) + 5
+    mmButton:ClearAllPoints()
+    mmButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * r, math.sin(a) * r)
+end
+
+function MinimapIcon()
+    if not mmButton then return end
+    local gun = WeaponAmmoType() == "bullet"
+    mmButton.icon:SetTexture(gun and "Interface\\Icons\\INV_Weapon_Rifle_01" or "Interface\\Icons\\INV_Ammo_Arrow_01")
+end
+
+function MinimapButtonShown()
+    if mmButton then mmButton:SetShown(not db.minimapHidden) end
+end
+
+local function CreateMinimapButton()
+    if mmButton or not Minimap then return end
+    local b = CreateFrame("Button", "SquaredAwayMinimapButton", Minimap)
+    b:SetSize(31, 31)
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(8)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:RegisterForDrag("LeftButton")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetSize(20, 20)
+    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    bg:SetPoint("TOPLEFT", 7, -5)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetSize(18, 18)
+    b.icon:SetPoint("TOPLEFT", 7, -6)
+    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local border = b:CreateTexture(nil, "OVERLAY")
+    border:SetSize(53, 53)
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetPoint("TOPLEFT")
+    b:SetScript("OnClick", function(_, mouse)
+        if mouse == "RightButton" then
+            ToggleSettings()
+        else
+            db.barHidden = (not db.barHidden) or nil
+            Update()
+            if settings:IsShown() then for _, c in ipairs(controls) do c:Refresh() end end
+        end
+    end)
+    b:SetScript("OnDragStart", function(self)
+        self:SetScript("OnUpdate", function()
+            local mx, my = Minimap:GetCenter()
+            local px, py = GetCursorPosition()
+            local scale = Minimap:GetEffectiveScale()
+            local atan2 = math.atan2 or math.atan
+            db.minimapAngle = math.deg(atan2(py / scale - my, px / scale - mx))
+            PlaceMinimapButton()
+        end)
+    end)
+    b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Squared Away", 1, 1, 1)
+        GameTooltip:AddLine(db.barHidden and L["Left-click: show the bar"] or L["Left-click: hide the bar"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Right-click: settings"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Drag: move this button"], 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    mmButton = b
+    MinimapIcon()
+    PlaceMinimapButton()
+    MinimapButtonShown()
 end
 
 -- Entry in Esc > Options > AddOns: a short page with a button that opens
@@ -2261,6 +2353,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
             Update()
         end)
         frame:SetScale(math.min(64 / ICON_SIZE, math.max(24 / ICON_SIZE, db.iconScale or 1)))
+        CreateMinimapButton()
         pcall(RegisterOptions)
 
     elseif event == "UNIT_AURA" or event == "UNIT_INVENTORY_CHANGED" then

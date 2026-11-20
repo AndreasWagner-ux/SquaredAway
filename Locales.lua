@@ -188,4 +188,10 @@ if locale == "deDE" then
     L["Status in chat"] = "Status im Chat"
     L["All settings are in the Squared Away window."] = "Alle Einstellungen findest du im Fenster von Squared Away."
     L["Open settings"] = "Einstellungen öffnen"
+    L["Show bar"] = "Leiste anzeigen"
+    L["Minimap button"] = "Minimap-Knopf"
+    L["Left-click: show the bar"] = "Linksklick: Leiste anzeigen"
+    L["Left-click: hide the bar"] = "Linksklick: Leiste ausblenden"
+    L["Right-click: settings"] = "Rechtsklick: Einstellungen"
+    L["Drag: move this button"] = "Ziehen: Knopf verschieben"
 end
