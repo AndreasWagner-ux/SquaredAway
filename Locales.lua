@@ -61,17 +61,10 @@ if locale == "deDE" then
     L["Intellect"] = "Intelligenz"
 
     -- settings window
-    L["Show food"] = "Essen anzeigen"
-    L["Show armor kits"] = "Rüstungssets anzeigen"
-    L["Show agility elixir / scroll"] = "Beweglichkeit (Elixier / Rolle) anzeigen"
-    L["Show stat buffs"] = "Werte-Buffs anzeigen (Rolle oder Elixier)"
-    L["Show pet"] = "Tier anzeigen"
-    L["Aspect reminder"] = "Aspekt-Erinnerung"
     L["Lock bar"] = "Leiste sperren"
     L["Reset position"] = "Position zurücksetzen"
     L["Database"] = "Datenbank"
     L["Data from ForeverDB.net (https://foreverdb.net)"] = "Daten von ForeverDB.net (https://foreverdb.net)"
-    L["Game build %s"] = "Spielversion %s"
     L["game build %s"] = "Spielversion %s"
 
     -- database window
@@ -108,7 +101,6 @@ if locale == "deDE" then
     L["best food for your level: %s"] = "bestes Essen für deine Stufe: %s"
     L["best armor kit for your level: %s"] = "bestes Rüstungsset für deine Stufe: %s"
     L["best agility elixir or scroll for your level: %s"] = "bestes Beweglichkeits-Elixier oder -Rolle für deine Stufe: %s"
-    L["loaded. Type /sqa for options."] = "geladen. Gib /sqa für die Optionen ein."
     L["icons locked."] = "Symbole gesperrt."
     L["icons unlocked. Drag an icon to move them."] = "Symbole entsperrt. Ziehe ein Symbol, um sie zu verschieben."
     L["position reset."] = "Position zurückgesetzt."
@@ -143,7 +135,6 @@ if locale == "deDE" then
     L["  /sqa reset   move icons back to the middle"] = "  /sqa reset   Symbole zurück in die Mitte"
 
     -- ammo
-    L["Show ammo"] = "Munition anzeigen"
     L["No bow, crossbow or gun equipped"] = "Kein Bogen, keine Armbrust und kein Gewehr angelegt"
     L["Arrows: %d / %d"] = "Pfeile: %d / %d"
     L["Bullets: %d / %d"] = "Kugeln: %d / %d"
@@ -172,7 +163,6 @@ if locale == "deDE" then
     L["Left-click: buy anyway (asks first)"] = "Linksklick: trotzdem kaufen (fragt vorher)"
     L["Better ammo in your bags:"] = "Bessere Munition in deinen Taschen:"
     L["Right-click it in your bags to use it."] = "Rechtsklick in der Tasche, um sie zu verwenden."
-    L["Show sharpening stone"] = "Wetzstein anzeigen"
     L["Weapon enhanced"] = "Waffe verstärkt"
     L["No sharpening stone on your weapon"] = "Kein Wetzstein auf deiner Waffe"
     L["No weightstone on your weapon"] = "Kein Gewichtsstein auf deiner Waffe"
@@ -180,4 +170,22 @@ if locale == "deDE" then
     L["No\nquiver"] = "Kein\nKöcher"
     L["No\npouch"] = "Kein\nBeutel"
     L["is made for hunters and stays off on this character. Other classes will follow later."] = "ist für Jäger gemacht und bleibt bei diesem Charakter ausgeschaltet. Andere Klassen folgen später."
+    -- settings window
+    L["Icons on the bar"] = "Symbole auf der Leiste"
+    L["Agility (elixir or scroll)"] = "Beweglichkeit (Elixier, Rolle)"
+    L["Ammo"] = "Munition"
+    L["Sharpening stone"] = "Wetzstein"
+    L["Reminders"] = "Erinnerungen"
+    L["Flash \"No aspect active!\""] = "\"Kein Aspekt aktiv!\" blinken lassen"
+    L["Fill the quiver"] = "Köcher füllen"
+    L["Carry"] = "Mitnehmen"
+    L["%d stacks (%d arrows)"] = "%d Stapel (%d Pfeile)"
+    L["%d stacks (%d bullets)"] = "%d Stapel (%d Kugeln)"
+    L["Quiver: %d slots"] = "Köcher: %d Plätze"
+    L["Without a quiver: %s"] = "Ohne Köcher: %s"
+    L["Bar"] = "Leiste"
+    L["Icon size"] = "Symbolgröße"
+    L["Status in chat"] = "Status im Chat"
+    L["All settings are in the Squared Away window."] = "Alle Einstellungen findest du im Fenster von Squared Away."
+    L["Open settings"] = "Einstellungen öffnen"
 end

@@ -1427,12 +1427,25 @@ function QueueUpdate()
 end
 
 ----------------------------------------------------------------------
--- Settings window (right-click an icon, or /sqa config)
+-- Settings window (right-click an icon, /sqa, or Esc > Options > AddOns)
+-- Flat, dark design with own checkboxes, sliders and buttons.
 ----------------------------------------------------------------------
+
+local ACCENT = { 0.50, 0.83, 1.00 }  -- the blue of the chat prefix
+local PrintStatus                      -- set with the slash commands
+
+local function Flat(f, bg, border)
+    if not f.SetBackdrop and BackdropTemplateMixin then Mixin(f, BackdropTemplateMixin) end
+    if f.SetBackdrop then
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+        f:SetBackdropColor(unpack(bg))
+        f:SetBackdropBorderColor(unpack(border))
+    end
+end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(330, 412)
+settings:SetSize(400, 560)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -1441,42 +1454,150 @@ settings:RegisterForDrag("LeftButton")
 settings:SetScript("OnDragStart", settings.StartMoving)
 settings:SetScript("OnDragStop", settings.StopMovingOrSizing)
 settings:SetClampedToScreen(true)
-if settings.SetBackdrop then
-    settings:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 },
-    })
-end
+Flat(settings, { 0.06, 0.07, 0.09, 0.97 }, { 0.22, 0.26, 0.32, 1 })
 settings:Hide()
 tinsert(UISpecialFrames, "SquaredAwaySettings") -- Escape closes it
 
+-- title bar
+local titleBar = settings:CreateTexture(nil, "ARTWORK")
+titleBar:SetColorTexture(0.10, 0.12, 0.15, 1)
+titleBar:SetPoint("TOPLEFT", 1, -1)
+titleBar:SetPoint("TOPRIGHT", -1, -1)
+titleBar:SetHeight(36)
+local titleLine = settings:CreateTexture(nil, "ARTWORK")
+titleLine:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.7)
+titleLine:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT")
+titleLine:SetPoint("TOPRIGHT", titleBar, "BOTTOMRIGHT")
+titleLine:SetHeight(1)
+
 local title = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOP", 0, -18)
+title:SetPoint("LEFT", titleBar, "LEFT", 14, 0)
+title:SetTextColor(1, 1, 1)
 title:SetText("Squared Away")
 
-local close = CreateFrame("Button", nil, settings, "UIPanelCloseButton")
-close:SetPoint("TOPRIGHT", -6, -6)
+local GetMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+local versionText = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+versionText:SetPoint("LEFT", title, "RIGHT", 8, -1)
+versionText:SetText(GetMeta and GetMeta(ADDON, "Version") or "")
 
-local checks = {}
+local close = CreateFrame("Button", nil, settings)
+close:SetSize(28, 28)
+close:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
+close.text = close:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+close.text:SetPoint("CENTER")
+close.text:SetText("X")
+close.text:SetTextColor(0.6, 0.6, 0.6)
+close:SetScript("OnEnter", function(self) self.text:SetTextColor(1, 1, 1) end)
+close:SetScript("OnLeave", function(self) self.text:SetTextColor(0.6, 0.6, 0.6) end)
+close:SetScript("OnClick", function() settings:Hide() end)
 
-local function AddCheck(label, y, getter, setter)
-    local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
-    cb:SetSize(26, 26)
-    cb:SetPoint("TOPLEFT", 22, y)
-    local text = settings:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    text:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-    text:SetText(label)
-    cb:SetScript("OnClick", function(self)
+-- section heading with a thin line to the right
+local function Heading(text, y)
+    local h = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h:SetPoint("TOPLEFT", 18, y)
+    h:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
+    h:SetText(text:upper())
+    local line = settings:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.22, 0.26, 0.32, 1)
+    line:SetHeight(1)
+    line:SetPoint("LEFT", h, "RIGHT", 8, 0)
+    line:SetPoint("RIGHT", settings, "RIGHT", -18, 0)
+    return h
+end
+
+local controls = {} -- refreshed when the window opens
+
+-- checkbox (square) or radio (round dot); the whole row is clickable
+local function Toggle(label, x, y, getter, setter, radio)
+    local b = CreateFrame("Button", nil, settings)
+    b:SetSize(180, 22)
+    b:SetPoint("TOPLEFT", x, y)
+    local box = CreateFrame("Frame", nil, b, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    box:SetSize(16, 16)
+    box:SetPoint("LEFT", 0, 0)
+    Flat(box, { 0.10, 0.12, 0.15, 1 }, { 0.35, 0.40, 0.48, 1 })
+    b.box = box
+    b.fill = box:CreateTexture(nil, "OVERLAY")
+    b.fill:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+    b.fill:SetPoint("CENTER")
+    b.fill:SetSize(radio and 6 or 10, radio and 6 or 10)
+    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.text:SetPoint("LEFT", box, "RIGHT", 8, 0)
+    b.text:SetJustifyH("LEFT")
+    b.text:SetText(label)
+    b:SetScript("OnEnter", function(self) self.box:SetBackdropBorderColor(ACCENT[1], ACCENT[2], ACCENT[3], 1) end)
+    b:SetScript("OnLeave", function(self) self.box:SetBackdropBorderColor(0.35, 0.40, 0.48, 1) end)
+    b.Refresh = function(self) self.fill:SetShown(getter() and true or false) end
+    b:SetScript("OnClick", function(self)
         if not db then return end
-        setter(self:GetChecked() and true or false)
+        setter(not getter())
+        for _, c in ipairs(controls) do c:Refresh() end
         Update()
     end)
-    cb.getter = getter
-    cb.label = text
-    checks[#checks + 1] = cb
-    return cb
+    controls[#controls + 1] = b
+    return b
+end
+
+-- slider with a value text to its right
+local function Slider(x, y, width, minV, maxV, step, getter, setter, valueText)
+    local sl = CreateFrame("Slider", nil, settings)
+    sl:SetOrientation("HORIZONTAL")
+    sl:SetSize(width, 16)
+    sl:SetPoint("TOPLEFT", x, y)
+    sl:SetMinMaxValues(minV, maxV)
+    sl:SetValueStep(step)
+    if sl.SetObeyStepOnDrag then sl:SetObeyStepOnDrag(true) end
+    local track = sl:CreateTexture(nil, "BACKGROUND")
+    track:SetColorTexture(0.22, 0.26, 0.32, 1)
+    track:SetPoint("LEFT")
+    track:SetPoint("RIGHT")
+    track:SetHeight(4)
+    local thumb = sl:CreateTexture(nil, "OVERLAY")
+    thumb:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+    thumb:SetSize(10, 16)
+    sl:SetThumbTexture(thumb)
+    sl.value = settings:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sl.value:SetPoint("LEFT", sl, "RIGHT", 10, 0)
+    sl.value:SetJustifyH("LEFT")
+    sl:EnableMouseWheel(true)
+    sl:SetScript("OnMouseWheel", function(self, delta)
+        self:SetValue(self:GetValue() + delta * step)
+    end)
+    sl:SetScript("OnValueChanged", function(self, v)
+        v = math.floor(v / step + 0.5) * step
+        self.value:SetText(valueText(v))
+        if self.loading or not db then return end
+        setter(v)
+        for _, c in ipairs(controls) do if c ~= self then c:Refresh() end end
+    end)
+    sl.Refresh = function(self)
+        local lo, hi = self:GetMinMaxValues()
+        self.loading = true
+        self:SetValue(math.min(hi, math.max(lo, getter())))
+        self.loading = false
+        self.value:SetText(valueText(self:GetValue()))
+    end
+    controls[#controls + 1] = sl
+    return sl
+end
+
+-- flat button
+local function FlatButton(parent, label, width)
+    local b = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    b:SetSize(width, 26)
+    Flat(b, { 0.13, 0.15, 0.19, 1 }, { 0.30, 0.35, 0.42, 1 })
+    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.text:SetPoint("CENTER")
+    b.text:SetText(label)
+    b:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(0.18, 0.21, 0.26, 1)
+        self:SetBackdropBorderColor(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+    end)
+    b:SetScript("OnLeave", function(self)
+        self:SetBackdropColor(0.13, 0.15, 0.19, 1)
+        self:SetBackdropBorderColor(0.30, 0.35, 0.42, 1)
+    end)
+    return b
 end
 
 local function ShowToggle(key)
@@ -1484,22 +1605,77 @@ local function ShowToggle(key)
            function(on) db.hidden[key] = (not on) or nil end
 end
 
-AddCheck(L["Show food"], -50, ShowToggle("food"))
-AddCheck(L["Show armor kits"], -76, ShowToggle("kits"))
-AddCheck(L["Show agility elixir / scroll"], -102, ShowToggle("boost"))
-AddCheck(L["Show stat buffs"], -128, ShowToggle("scrolls"))
-AddCheck(L["Show ammo"], -154, ShowToggle("ammo"))
-AddCheck(L["Show sharpening stone"], -180, ShowToggle("stone"))
-local petCheck = AddCheck(L["Show pet"], -206, ShowToggle("pet"))
-local aspectCheck = AddCheck(L["Aspect reminder"], -232, ShowToggle("aspect"))
-AddCheck(L["Lock bar"], -264,
+-- icons on the bar
+Heading(L["Icons on the bar"], -52)
+Toggle(L["Food"], 18, -70, ShowToggle("food"))
+Toggle(L["Armor kits"], 18, -94, ShowToggle("kits"))
+Toggle(L["Agility (elixir or scroll)"], 18, -118, ShowToggle("boost"))
+Toggle(L["Pet"], 18, -142, ShowToggle("pet"))
+Toggle(L["Stat buffs"], 210, -70, ShowToggle("scrolls"))
+Toggle(L["Ammo"], 210, -94, ShowToggle("ammo"))
+Toggle(L["Sharpening stone"], 210, -118, ShowToggle("stone"))
+
+-- reminders
+Heading(L["Reminders"], -180)
+Toggle(L["Flash \"No aspect active!\""], 18, -198, ShowToggle("aspect")):SetWidth(360)
+
+-- ammo
+local function AmmoInfo()
+    local st = AmmoStatus()
+    local stack = 200
+    if st and st.main then stack = StackSize(st.main) end
+    local maxStacks = (st and st.quiverSlots and st.quiverSlots > 0) and st.quiverSlots or 10
+    return st, stack, maxStacks
+end
+local function StackText(n, stack, kind)
+    return (kind == "bullet" and L["%d stacks (%d bullets)"] or L["%d stacks (%d arrows)"]):format(n, n * stack)
+end
+
+Heading(L["Ammo"], -236)
+Toggle(L["Fill the quiver"], 18, -254,
+    function() return not db.ammoStacks end,
+    function() db.ammoStacks = nil; if merchantOpen then ScanMerchantAmmo() end end, true)
+local carry = Toggle(L["Carry"], 18, -280,
+    function() return db.ammoStacks ~= nil end,
+    function()
+        local _, _, maxStacks = AmmoInfo()
+        db.ammoStacks = db.ammoStacks or math.min(4, maxStacks)
+        if merchantOpen then ScanMerchantAmmo() end
+    end, true)
+carry:SetWidth(80)
+local ammoSlider = Slider(110, -283, 140, 1, 10, 1,
+    function() return db.ammoStacks or 4 end,
+    function(v)
+        db.ammoStacks = v
+        if merchantOpen then ScanMerchantAmmo() end
+        Update()
+    end,
+    function(v)
+        local st, stack = AmmoInfo()
+        return StackText(v, stack, st and st.kind)
+    end)
+local noQuiverText = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+noQuiverText:SetPoint("TOPLEFT", 44, -306)
+noQuiverText:SetJustifyH("LEFT")
+
+-- bar
+Heading(L["Bar"], -338)
+Toggle(L["Lock bar"], 18, -356,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
-
-local resetBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
-resetBtn:SetSize(140, 22)
-resetBtn:SetPoint("BOTTOM", 0, 44)
-resetBtn:SetText(L["Reset position"])
+local sizeLabel = settings:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+sizeLabel:SetPoint("TOPLEFT", 18, -386)
+sizeLabel:SetText(L["Icon size"])
+Slider(110, -386, 140, 24, 64, 2,
+    function() return math.floor((db.iconScale or 1) * ICON_SIZE + 0.5) end,
+    function(v)
+        v = math.min(64, math.max(24, v))
+        db.iconScale = v / ICON_SIZE
+        frame:SetScale(db.iconScale)
+    end,
+    function(v) return v .. " px" end)
+local resetBtn = FlatButton(settings, L["Reset position"], 160)
+resetBtn:SetPoint("TOPLEFT", 18, -414)
 resetBtn:SetScript("OnClick", function()
     if not db then return end
     db.pos = nil
@@ -1507,16 +1683,78 @@ resetBtn:SetScript("OnClick", function()
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
 end)
 
+-- bottom buttons
+local sep = settings:CreateTexture(nil, "ARTWORK")
+sep:SetColorTexture(0.22, 0.26, 0.32, 1)
+sep:SetHeight(1)
+sep:SetPoint("TOPLEFT", 18, -456)
+sep:SetPoint("TOPRIGHT", -18, -456)
+local dbBtn = FlatButton(settings, L["Database"], 175)
+dbBtn:SetPoint("TOPLEFT", 18, -470)
+local statusBtn = FlatButton(settings, L["Status in chat"], 175)
+statusBtn:SetPoint("TOPRIGHT", -18, -470)
+statusBtn:SetScript("OnClick", function() if db and PrintStatus then PrintStatus() end end)
+
+-- footer
+local footer2 = settings:CreateTexture(nil, "ARTWORK")
+footer2:SetColorTexture(0.10, 0.12, 0.15, 1)
+footer2:SetPoint("BOTTOMLEFT", 1, 1)
+footer2:SetPoint("BOTTOMRIGHT", -1, 1)
+footer2:SetHeight(30)
+local settingsCredit = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+settingsCredit:SetPoint("CENTER", footer2, "CENTER")
+settingsCredit:SetText(CREDIT .. (ns.DATA_BUILD and (" · " .. L["game build %s"]:format(ns.DATA_BUILD:match("(%d+)$") or ns.DATA_BUILD)) or ""))
+
 settings:SetScript("OnShow", function()
-    for _, cb in ipairs(checks) do cb:SetChecked(cb.getter() and true or false) end
-    petCheck:SetShown(isHunter)
-    petCheck.label:SetShown(isHunter)
-    aspectCheck:SetShown(isHunter)
-    aspectCheck.label:SetShown(isHunter)
+    if not db then return end
+    local st, stack, maxStacks = AmmoInfo()
+    ammoSlider.loading = true
+    ammoSlider:SetMinMaxValues(1, maxStacks)
+    ammoSlider.loading = false
+    for _, c in ipairs(controls) do c:Refresh() end
+    ammoSlider:SetEnabled(db.ammoStacks ~= nil)
+    ammoSlider:SetAlpha(db.ammoStacks ~= nil and 1 or 0.4)
+    if st and st.quiverSlots > 0 then
+        noQuiverText:SetText(L["Quiver: %d slots"]:format(st.quiverSlots))
+    else
+        noQuiverText:SetText(L["Without a quiver: %s"]:format(StackText(2, stack, st and st.kind)))
+    end
 end)
+-- the slider follows the radio buttons
+local function RefreshAmmoSlider()
+    if not db then return end
+    ammoSlider:SetEnabled(db.ammoStacks ~= nil)
+    ammoSlider:SetAlpha(db.ammoStacks ~= nil and 1 or 0.4)
+end
+controls[#controls + 1] = { Refresh = RefreshAmmoSlider }
 
 local function ToggleSettings()
     if settings:IsShown() then settings:Hide() else settings:Show() end
+end
+
+-- Entry in Esc > Options > AddOns: a short page with a button that opens
+-- the Squared Away window.
+local function RegisterOptions()
+    local panel = CreateFrame("Frame")
+    panel.name = "Squared Away"
+    local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    t:SetPoint("TOPLEFT", 16, -16)
+    t:SetText("Squared Away")
+    local d = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    d:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -10)
+    d:SetText(L["All settings are in the Squared Away window."])
+    local b = FlatButton(panel, L["Open settings"], 200)
+    b:SetPoint("TOPLEFT", d, "BOTTOMLEFT", 0, -14)
+    b:SetScript("OnClick", function()
+        settings:SetFrameStrata("FULLSCREEN_DIALOG")
+        settings:Show()
+    end)
+    if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(panel, "Squared Away")
+        Settings.RegisterAddOnCategory(category)
+    elseif InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(panel)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -1864,15 +2102,6 @@ local function ToggleDB(tab)
     end
 end
 
-local settingsCredit = settings:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-settingsCredit:SetPoint("BOTTOM", 0, 18)
-settingsCredit:SetWidth(290)
-settingsCredit:SetText(CREDIT .. (ns.DATA_BUILD and ("\n" .. L["Game build %s"]:format(ns.DATA_BUILD)) or ""))
-
-local dbBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
-dbBtn:SetSize(140, 22)
-dbBtn:SetPoint("BOTTOM", resetBtn, "TOP", 0, 6)
-dbBtn:SetText(L["Database"])
 dbBtn:SetScript("OnClick", function()
     if not db then return end
     settings:Hide()
@@ -2031,7 +2260,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
             last.boost = BestBoost()
             Update()
         end)
-        Print(L["loaded. Type /sqa for options."])
+        frame:SetScale(math.min(64 / ICON_SIZE, math.max(24 / ICON_SIZE, db.iconScale or 1)))
+        pcall(RegisterOptions)
 
     elseif event == "UNIT_AURA" or event == "UNIT_INVENTORY_CHANGED" then
         if arg1 == "player" or arg1 == "pet" then QueueUpdate() end
@@ -2087,6 +2317,38 @@ end)
 
 local TOGGLE_KEYS = { food = true, kits = true, boost = true, scrolls = true, ammo = true, stone = true, pet = true, aspect = true }
 
+-- Status in chat (button in the settings window, or /sqa list).
+PrintStatus = function()
+    local counts = { food = 0, kit = 0, boost = 0, scroll = 0 }
+    for _, info in pairs(db.items) do
+        if info and counts[info.kind] then counts[info.kind] = counts[info.kind] + 1 end
+    end
+    Print(L["known: %d Well Fed foods, %d armor kits, %d agility elixirs/scrolls, %d stat buffs."]:format(
+        counts.food, counts.kit, counts.boost, counts.scroll))
+    local food, kit = Best("food"), Best("kit")
+    local boost = BestBoost()
+    Print(L["food: %s"]:format(food and ItemText(food) or L["none known yet"]))
+    Print(L["armor kit: %s"]:format(kit and ItemText(kit) or L["none known yet"]))
+    Print(L["agility elixir or scroll: %s"]:format(boost and ItemText(boost) or L["none known yet"]))
+    local scrollList, scrollActive = ScrollStatus()
+    local missingNames = {}
+    for _, e in ipairs(scrollList) do
+        if e.state == "missing" then missingNames[#missingNames + 1] = e.s.label end
+    end
+    Print(L["stat buffs: %d/%d active"]:format(scrollActive, #scrollList)
+        .. (#missingNames > 0 and (", " .. L["missing: %s"]:format(table.concat(missingNames, ", "))) or ""))
+    local missing, weaker = KitStatus()
+    Print(L["missing kits: %s"]:format(#missing > 0 and table.concat(missing, ", ") or L["none"]))
+    Print(L["weaker kits: %s"]:format(#weaker > 0 and table.concat(weaker, ", ") or L["none"]))
+    Print(L["Well Fed: %s, agility boost: %s"]:format(IsWellFed() and L["yes"] or L["no"], ActiveBoost() and L["yes"] or L["no"]))
+    local ammo = AmmoStatus()
+    if ammo then Print(L["ammo: %d / %d"]:format(ammo.count, ammo.capacity)) end
+    if isHunter then
+        Print(L["pet: %s"]:format(select(2, PetStatus())))
+        Print(L["aspect: %s"]:format(ActiveAspect() and L["active"] or (KnowsAspect() and L["none active"] or L["none learned yet"])))
+    end
+end
+
 SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
 SlashCmdList.SQUAREDAWAY = function(msg)
@@ -2130,35 +2392,20 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         else
             Print(L["use: /sqa %s food | kits | boost | scrolls | ammo | stone | pet | aspect"]:format(cmd))
         end
-    elseif cmd == "list" then
-        local counts = { food = 0, kit = 0, boost = 0, scroll = 0 }
-        for _, info in pairs(db.items) do
-            if info and counts[info.kind] then counts[info.kind] = counts[info.kind] + 1 end
-        end
-        Print(L["known: %d Well Fed foods, %d armor kits, %d agility elixirs/scrolls, %d stat buffs."]:format(
-            counts.food, counts.kit, counts.boost, counts.scroll))
-        local food, kit = Best("food"), Best("kit")
-        local boost = BestBoost()
-        Print(L["food: %s"]:format(food and ItemText(food) or L["none known yet"]))
-        Print(L["armor kit: %s"]:format(kit and ItemText(kit) or L["none known yet"]))
-        Print(L["agility elixir or scroll: %s"]:format(boost and ItemText(boost) or L["none known yet"]))
-        local scrollList, scrollActive = ScrollStatus()
-        local missingNames = {}
-        for _, e in ipairs(scrollList) do
-            if e.state == "missing" then missingNames[#missingNames + 1] = e.s.label end
-        end
-        Print(L["stat buffs: %d/%d active"]:format(scrollActive, #scrollList)
-            .. (#missingNames > 0 and (", " .. L["missing: %s"]:format(table.concat(missingNames, ", "))) or ""))
-        local missing, weaker = KitStatus()
-        Print(L["missing kits: %s"]:format(#missing > 0 and table.concat(missing, ", ") or L["none"]))
-        Print(L["weaker kits: %s"]:format(#weaker > 0 and table.concat(weaker, ", ") or L["none"]))
-        Print(L["Well Fed: %s, agility boost: %s"]:format(IsWellFed() and L["yes"] or L["no"], ActiveBoost() and L["yes"] or L["no"]))
-        local ammo = AmmoStatus()
-        if ammo then Print(L["ammo: %d / %d"]:format(ammo.count, ammo.capacity)) end
-        if isHunter then
-            Print(L["pet: %s"]:format(select(2, PetStatus())))
-            Print(L["aspect: %s"]:format(ActiveAspect() and L["active"] or (KnowsAspect() and L["none active"] or L["none learned yet"])))
-        end
+    elseif cmd == "list" or cmd == "status" then
+        PrintStatus()
+    elseif cmd == "help" then
+        Print(L["commands:"])
+        Print(L["  /sqa config  open the settings (or right-click an icon)"])
+        Print(L["  /sqa list    what I know and suggest"])
+        Print(L["  /sqa db      database of known food, kits, elixirs and scrolls"])
+        Print(L["               (/sqa db food | kits | boost | scrolls opens that list)"])
+        Print(L["  /sqa hide | show food | kits | boost | scrolls | ammo | stone | pet | aspect"])
+        Print(L["  /sqa ammo N  carry N stacks of ammo (0 = fill the quiver)"])
+        Print(L["  /sqa lock | unlock    stop or allow dragging"])
+        Print(L["  /sqa reset   move icons back to the middle"])
+    elseif cmd == "" then
+        ToggleSettings()
     else
         Print(L["commands:"])
         Print(L["  /sqa config  open the settings (or right-click an icon)"])

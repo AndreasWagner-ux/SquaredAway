@@ -3,7 +3,7 @@
 ## Notes: Reminds you about Well Fed food, armor kits, agility elixirs, stat scrolls, your pet and your aspect, and suggests what fits your level.
 ## Notes-deDE: Erinnert an Satt-Essen, Rüstungssets, Beweglichkeits-Elixiere, Werte-Rollen, dein Tier und deinen Aspekt und schlägt vor, was zu deiner Stufe passt.
 ## Author: Andreaswagner-ux
-## Version: 0.12.0
+## Version: 0.13.0
 ## SavedVariables: SquaredAwayDB
 ## X-License: GPL-3.0-or-later
 ## X-Website: https://github.com/AndreasWagner-ux/SquaredAway

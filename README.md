@@ -49,21 +49,11 @@ Squared Away starts with a list of item IDs from ForeverDB.net (food, armor kits
 
 ## Usage
 
-- **Move the bar:** left-click and hold an icon, then drag.
-- **Settings:** right-click an icon (show or hide icons, lock the bar, reset the position).
-- **Database:** shift + right-click an icon, the "Database" button in the settings, or `/sqa db`. Lists all known food, armor kits and elixirs/scrolls sorted by level. The current suggestion has a check mark, items for higher levels are greyed out, and your bag count is shown. Hover a row for the item tooltip, shift-click it to link the item in chat.
+- **Settings:** type `/sqa`, right-click an icon, or open Esc > Options > AddOns > Squared Away. Everything is set in that window: which icons are shown, the aspect reminder, how much ammo to carry, lock the bar, icon size and position. It also has buttons for the database and a status report in chat.
+- **Move the bar:** left-click and hold an icon, then drag (unless the bar is locked).
+- **Database:** shift + right-click an icon, or the Database button in the settings.
 
-Commands:
-
-| Command | What it does |
-|---|---|
-| `/sqa config` | Open the settings |
-| `/sqa list` | Show what the addon knows and suggests |
-| `/sqa db` | Open the database (`/sqa db food`, `kits`, `boost` or `scrolls` opens that list) |
-| `/sqa hide food`, `kits`, `boost`, `scrolls`, `ammo`, `stone`, `pet`, `aspect` | Hide an icon or the aspect reminder (`/sqa show ...` brings it back) |
-| `/sqa ammo N` | Carry N stacks of ammo (0 = fill the quiver) |
-| `/sqa lock`, `/sqa unlock` | Stop or allow dragging |
-| `/sqa reset` | Move the bar back to the middle |
+Squared Away prints nothing at login. For players who like typing, the old commands still work; `/sqa help` lists them.
 
 ## Known limits
 
