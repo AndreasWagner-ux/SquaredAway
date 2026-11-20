@@ -938,7 +938,8 @@ local function MakeButton(fallbackIcon, withTimer)
         b.timer = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
         b.timer:SetDrawLayer("OVERLAY", 7)
         local font = b.timer:GetFont()
-        b.timer:SetFont(font or STANDARD_TEXT_FONT, 12, "OUTLINE")
+        b.timerFont = font or STANDARD_TEXT_FONT
+        b.timer:SetFont(b.timerFont, 12, "OUTLINE")
         b.timer:SetPoint("CENTER", b.strip, "CENTER", 0, 0)
         b.SetTimer = function(self, text)
             self.timer:SetText(text or "")
@@ -991,7 +992,23 @@ local function UpdateTimer(b)
     end
 end
 
+-- Without a quiver the ammo icon switches every 2 seconds between the
+-- count and "No quiver" (two small lines, so it fits the icon).
+local function ShowAmmoText()
+    local b = ammoButton
+    if b.noQuiver and math.floor(GetTime() / 2) % 2 == 1 then
+        b.timer:SetFont(b.timerFont, 9, "OUTLINE")
+        b.strip:SetHeight(22)
+        b:SetTimer(b.noQuiver)
+    else
+        b.timer:SetFont(b.timerFont, 12, "OUTLINE")
+        b.strip:SetHeight(14)
+        if b.noQuiver then b:SetTimer(b.countText) end
+    end
+end
+
 C_Timer.NewTicker(1, function()
+    ShowAmmoText()
     UpdateTimer(foodButton)
     UpdateTimer(boostButton)
     UpdateTimer(stoneButton)
@@ -1143,7 +1160,7 @@ ammoButton:SetScript("OnEnter", function(self)
     else
         local stacks = (db.ammoStacks or 0) > 0 and db.ammoStacks or 2
         GameTooltip:AddLine((st.kind == "arrow" and L["No quiver: counting %d stacks in your bags as full."]
-            or L["No ammo pouch: counting %d stacks in your bags as full."]):format(stacks), 0.7, 0.7, 0.7, true)
+            or L["No ammo pouch: counting %d stacks in your bags as full."]):format(stacks), 1, 0.82, 0, true)
     end
     -- better ammo already in the bags, but not the one you shoot
     local equipped = GetInventoryItemID("player", AMMO_SLOT)
@@ -1346,6 +1363,7 @@ local function Update()
     -- ammo: count in the icon; at a vendor "+N" and a click buys
     local ammo = AmmoStatus(ammoOffer and ammoOffer.id)
     ammoButton.empty = ammo == nil
+    ammoButton.noQuiver = nil
     if ammo then
         if merchantOpen and ammoOffer and ammoOffer.amount > 0 then
             SetState(ammoButton, "warn", ammoOffer.id)
@@ -1354,12 +1372,18 @@ local function Update()
             else ammoButton.timer:SetTextColor(0.4, 1, 0.4) end
         else
             local state = (ammo.count < 200 or ammo.ratio < 0.15) and "missing" or ammo.ratio < 0.5 and "warn" or "ok"
+            if ammo.quiverSlots == 0 and state == "ok" then state = "warn" end -- no quiver: yellow
             SetState(ammoButton, state, ammo.main)
             ammoButton:SetTimer(ShortCount(ammo.count))
             if state == "missing" then ammoButton.timer:SetTextColor(1, 0.3, 0.3)
             elseif state == "warn" then ammoButton.timer:SetTextColor(1, 0.82, 0)
             else ammoButton.timer:SetTextColor(1, 1, 1) end
+            if ammo.quiverSlots == 0 then
+                ammoButton.noQuiver = ammo.kind == "arrow" and L["No\nquiver"] or L["No\npouch"]
+                ammoButton.countText = ShortCount(ammo.count)
+            end
         end
+        ShowAmmoText()
     end
 
     -- sharpening stone / weightstone (only with a melee weapon)

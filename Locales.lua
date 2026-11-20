@@ -177,4 +177,6 @@ if locale == "deDE" then
     L["No sharpening stone on your weapon"] = "Kein Wetzstein auf deiner Waffe"
     L["No weightstone on your weapon"] = "Kein Gewichtsstein auf deiner Waffe"
     L["Only for your melee weapon, not your bow or gun."] = "Nur für deine Nahkampfwaffe, nicht für Bogen oder Gewehr."
+    L["No\nquiver"] = "Kein\nKöcher"
+    L["No\npouch"] = "Kein\nBeutel"
 end
