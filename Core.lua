@@ -33,6 +33,7 @@ local GetItemInfoFn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetItemIconFn = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
 local GetItemCountFn = (C_Item and C_Item.GetItemCount) or GetItemCount
 local GetItemSpellFn = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+local GetItemInfoInstantFn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
 local RequestLoad = C_Item and C_Item.RequestLoadItemDataByID
 
 local CHECK = "Interface\\RaidFrame\\ReadyCheck-Ready"
@@ -41,6 +42,7 @@ local CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 
 local db
 local pending = {}
+local QueueUpdate -- set further down
 local isHunter = false
 
 local function Print(msg)
@@ -153,6 +155,14 @@ local function Classify(id)
 
     local lname = name:lower()
     local info = { lvl = minLevel or 0, ilvl = ilvl or 0 }
+
+    -- arrows and bullets: known by their item class, no tooltip words needed
+    local _, _, _, _, _, classID, subID = GetItemInfoInstantFn(id)
+    if classID == 6 and (subID == 2 or subID == 3) then
+        info.kind, info.sub = "ammo", subID == 2 and "arrow" or "bullet"
+        db.items[id] = info
+        return
+    end
 
     if text:find("well fed", 1, true) or text:find("%f[%a]satt%f[%A]") then
         info.kind = "food"
@@ -512,6 +522,271 @@ local function ScrollStatus()
 end
 
 ----------------------------------------------------------------------
+-- Ammo: count, quiver fill, best ammo at a vendor, one-click restock
+----------------------------------------------------------------------
+
+local AMMO_SLOT = INVSLOT_AMMO or 0
+local RANGED_SLOT = INVSLOT_RANGED or 18
+local merchantOpen = false
+local ammoOffer -- best ammo the open vendor sells, see ScanMerchantAmmo
+local buying = false
+
+-- "arrow" or "bullet" for the equipped bow, crossbow or gun; nil otherwise.
+local function WeaponAmmoType()
+    local id = GetInventoryItemID("player", RANGED_SLOT)
+    if not id then return nil end
+    local _, _, _, _, _, classID, subID = GetItemInfoInstantFn(id)
+    if classID ~= 2 then return nil end
+    if subID == 2 or subID == 18 then return "arrow" end -- bow, crossbow
+    if subID == 3 then return "bullet" end               -- gun
+end
+
+local function AmmoType(id)
+    local info = db.items[id]
+    if info and info.kind == "ammo" then return info.sub end
+    local _, _, _, _, _, classID, subID = GetItemInfoInstantFn(id)
+    if classID == 6 then
+        if subID == 2 then return "arrow" elseif subID == 3 then return "bullet" end
+    end
+end
+
+-- Damage per second from the tooltip, using the game's own text
+-- ("Adds %s damage per second"), so it works in every client language.
+local function AmmoDPS(id)
+    local info = db.items[id]
+    if info and info.dps then return info.dps end
+    local template = AMMO_DAMAGE_TEMPLATE
+    if not template then return 0 end
+    local pattern = template:lower():gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+    pattern = pattern:gsub("%%[%d%.]*[sfd]", "([%%d%%.,]+)")
+    local text = TooltipText(id)
+    local num = text and text:match(pattern)
+    local dps = num and tonumber((num:gsub(",", "."))) or nil
+    if info and dps then info.dps = dps end
+    return dps or 0
+end
+
+local function AmmoLevel(id)
+    local _, _, _, _, minLevel = GetItemInfoFn(id)
+    local info = db.items[id]
+    return minLevel or (info and info.lvl) or 0
+end
+
+local function StackSize(id)
+    local stack = select(8, GetItemInfoFn(id))
+    return (stack and stack > 1) and stack or 200
+end
+
+-- Is ammo a better than ammo b? Damage first, then required level.
+local function BetterAmmo(a, b)
+    if not b then return true end
+    local da, dbb = AmmoDPS(a), AmmoDPS(b)
+    if da ~= dbb then return da > dbb end
+    return AmmoLevel(a) > AmmoLevel(b)
+end
+
+-- Best known ammo of a type usable at your level.
+local function BestKnownAmmo(kind)
+    local level, best = UnitLevel("player"), nil
+    for id, info in pairs(db.items) do
+        if info and info.kind == "ammo" and info.sub == kind and AmmoLevel(id) <= level
+            and BetterAmmo(id, best) then
+            best = id
+        end
+    end
+    return best
+end
+
+local function NumSlots(bag)
+    return (C_Container and C_Container.GetContainerNumSlots or GetContainerNumSlots)(bag) or 0
+end
+
+local function SlotInfo(bag, slot)
+    if C_Container and C_Container.GetContainerItemInfo then
+        local t = C_Container.GetContainerItemInfo(bag, slot)
+        if t then return t.itemID, t.stackCount end
+        return nil
+    end
+    local _, count, _, _, _, _, _, _, _, itemID = GetContainerItemInfo(bag, slot)
+    return itemID, count
+end
+
+-- Bags 1-4 that are a quiver (arrows) or an ammo pouch (bullets).
+local function AmmoBags(kind)
+    local bags = {}
+    local getFree = (C_Container and C_Container.GetContainerNumFreeSlots) or GetContainerNumFreeSlots
+    local bit_ = kind == "arrow" and 1 or 2
+    for bag = 1, NUM_BAG_SLOTS or 4 do
+        local _, family = getFree(bag)
+        if type(family) == "number" and family > 0 and bit and bit.band(family, bit_) ~= 0 then
+            bags[#bags + 1] = bag
+        end
+    end
+    return bags
+end
+
+-- Everything the ammo icon needs:
+-- kind, count (all matching ammo), main (ammo you use), capacity,
+-- quiverSlots, quiverName, free (room for more of `buyId`), ratio.
+local function AmmoStatus(buyId)
+    local kind = WeaponAmmoType()
+    if not kind then return nil end
+    local st = { kind = kind, count = 0, counts = {} }
+
+    for bag = 0, NUM_BAG_SLOTS or 4 do
+        for slot = 1, NumSlots(bag) do
+            local id, n = SlotInfo(bag, slot)
+            if id and AmmoType(id) == kind then
+                st.count = st.count + (n or 1)
+                st.counts[id] = (st.counts[id] or 0) + (n or 1)
+            end
+        end
+    end
+
+    local equipped = GetInventoryItemID("player", AMMO_SLOT)
+    if equipped and AmmoType(equipped) == kind then
+        st.main = equipped
+    else
+        local most = 0
+        for id, n in pairs(st.counts) do
+            if n > most then st.main, most = id, n end
+        end
+    end
+
+    local stack = StackSize(buyId or st.main or 2512)
+    local bags = AmmoBags(kind)
+    st.quiverSlots, st.free = 0, 0
+    for _, bag in ipairs(bags) do
+        for slot = 1, NumSlots(bag) do
+            st.quiverSlots = st.quiverSlots + 1
+            local id, n = SlotInfo(bag, slot)
+            if not id then
+                st.free = st.free + stack
+            elseif buyId and id == buyId and (n or 0) < stack then
+                st.free = st.free + stack - n
+            end
+        end
+    end
+    if #bags > 0 then
+        local invID = (C_Container and C_Container.ContainerIDToInventoryID or ContainerIDToInventoryID)(bags[1])
+        st.quiverName = invID and GetItemInfoFn(GetInventoryItemID("player", invID) or 0)
+    end
+
+    -- How much ammo you want to carry: the quiver, a manual stack limit, or
+    -- without a quiver two stacks.
+    local limit = (db.ammoStacks or 0) > 0 and db.ammoStacks or nil
+    if st.quiverSlots > 0 then
+        st.capacity = math.min(st.quiverSlots, limit or st.quiverSlots) * stack
+    else
+        st.capacity = (limit or 2) * stack
+        st.free = math.max(0, st.capacity - (buyId and st.counts[buyId] or st.count))
+    end
+    if limit and st.quiverSlots > 0 then
+        st.free = math.min(st.free, math.max(0, st.capacity - (buyId and st.counts[buyId] or st.count)))
+    end
+    st.ratio = st.capacity > 0 and math.min(1, st.count / st.capacity) or 0
+    return st
+end
+
+local function MerchantItem(i)
+    if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+        local t = C_MerchantFrame.GetItemInfo(i)
+        if not t then return nil end
+        return t.price, t.stackCount, t.numAvailable, t.isPurchasable, t.isUsable, t.hasExtendedCost
+    end
+    local _, _, price, quantity, numAvailable, isPurchasable, isUsable, extendedCost = GetMerchantItemInfo(i)
+    return price, quantity, numAvailable, isPurchasable, isUsable, extendedCost
+end
+
+-- Looks at the open vendor and remembers the best ammo for your weapon and
+-- level: { index, id, pricePerItem, bundle, amount (to buy), cost }.
+local function ScanMerchantAmmo()
+    ammoOffer = nil
+    if not merchantOpen then return end
+    local kind = WeaponAmmoType()
+    if not kind then return end
+    local level = UnitLevel("player")
+    local best
+    for i = 1, (GetMerchantNumItems() or 0) do
+        local link = GetMerchantItemLink(i)
+        local id = (GetMerchantItemID and GetMerchantItemID(i)) or (link and tonumber(link:match("item:(%d+)")))
+        if id then
+            Classify(id)
+            if AmmoType(id) == kind and AmmoLevel(id) <= level then
+                local price, bundle, available, purchasable, usable, extended = MerchantItem(i)
+                if price and not extended and purchasable ~= false and usable ~= false and available ~= 0
+                    and (not best or BetterAmmo(id, best.id)) then
+                    best = { index = i, id = id, bundle = math.max(1, bundle or 1),
+                             pricePerItem = (price or 0) / math.max(1, bundle or 1) }
+                end
+            end
+        end
+    end
+    if not best then return end
+    local st = AmmoStatus(best.id)
+    local amount = st and st.free or 0
+    if best.pricePerItem > 0 then
+        amount = math.min(amount, math.floor(GetMoney() / best.pricePerItem))
+    end
+    -- whole bundles only
+    amount = math.floor(amount / best.bundle) * best.bundle
+    best.amount = amount
+    best.cost = math.floor(amount * best.pricePerItem + 0.5)
+    best.stack = StackSize(best.id)
+    ammoOffer = best
+end
+
+local function MoneyText(copper)
+    if GetCoinTextureString then return GetCoinTextureString(copper) end
+    return string.format("%dg %ds %dc", copper / 10000, (copper / 100) % 100, copper % 100)
+end
+
+-- One click: buys the offered ammo, a stack at a time.
+local function BuyAmmo()
+    if buying or not merchantOpen then return end
+    ScanMerchantAmmo()
+    local offer = ammoOffer
+    if not offer or offer.amount <= 0 then
+        Print(L["Nothing to buy: your quiver is full or you need more gold."])
+        return
+    end
+    local maxStack = (GetMerchantItemMaxStack and GetMerchantItemMaxStack(offer.index)) or offer.stack
+    local left, bought = offer.amount, 0
+    buying = true
+
+    local function BuyOne()
+        if not merchantOpen or left <= 0 then return false end
+        local items, call
+        if maxStack <= 1 then
+            items, call = offer.bundle, 1                       -- vendor sells whole bundles
+        else
+            items = math.min(left, maxStack, offer.stack)
+            call = items
+        end
+        if offer.pricePerItem > 0 and GetMoney() < items * offer.pricePerItem then return false end
+        BuyMerchantItem(offer.index, call)
+        left, bought = left - items, bought + items
+        return left > 0
+    end
+
+    local function Done()
+        buying = false
+        if bought > 0 then
+            Print(L["bought %d %s for %s."]:format(bought, ItemText(offer.id),
+                MoneyText(math.floor(bought * offer.pricePerItem + 0.5))))
+        end
+        C_Timer.After(0.5, function() ScanMerchantAmmo(); QueueUpdate() end)
+    end
+
+    -- the first purchase happens inside your click, the rest follow
+    if not BuyOne() then Done() return end
+    local ticker
+    ticker = C_Timer.NewTicker(0.2, function()
+        if not BuyOne() then ticker:Cancel(); Done() end
+    end)
+end
+
+----------------------------------------------------------------------
 -- Pet
 ----------------------------------------------------------------------
 
@@ -572,6 +847,7 @@ local foodButton  = MakeButton("Interface\\Icons\\INV_Misc_Food_14", true)
 local kitButton   = MakeButton("Interface\\Icons\\INV_Misc_ArmorKit_17")
 local boostButton = MakeButton("Interface\\Icons\\INV_Scroll_02", true)
 local scrollButton = MakeButton("Interface\\Icons\\INV_Scroll_03", true)
+local ammoButton  = MakeButton("Interface\\Icons\\INV_Ammo_Arrow_02", true)
 local petButton   = MakeButton("Interface\\Icons\\Ability_Hunter_BeastCall")
 
 -- Time left: minutes (rounded up), seconds under 1 minute.
@@ -722,6 +998,55 @@ scrollButton:SetScript("OnEnter", function(self)
     GameTooltip:Show()
 end)
 
+-- 1234 -> "1234", 12345 -> "12.3k" (fits the icon)
+local function ShortCount(n)
+    if n >= 10000 then return string.format("%.1fk", n / 1000) end
+    return tostring(n)
+end
+
+ammoButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+    local st = AmmoStatus(ammoOffer and ammoOffer.id)
+    if not st then
+        GameTooltip:AddLine(L["No bow, crossbow or gun equipped"], 1, 0.4, 0.4)
+        GameTooltip:Show()
+        return
+    end
+    local r, g, bl = 0.4, 1, 0.4
+    if st.count < 200 or st.ratio < 0.15 then r, g, bl = 1, 0.4, 0.4 elseif st.ratio < 0.5 then r, g, bl = 1, 0.82, 0 end
+    GameTooltip:AddLine((st.kind == "arrow" and L["Arrows: %d / %d"] or L["Bullets: %d / %d"]):format(st.count, st.capacity), r, g, bl)
+    if st.main then
+        local dps = AmmoDPS(st.main)
+        GameTooltip:AddDoubleLine(ItemText(st.main), dps > 0 and L["%.1f damage per second"]:format(dps) or "", 1, 1, 1, 0.7, 0.7, 0.7)
+    end
+    if st.quiverSlots > 0 then
+        GameTooltip:AddLine(L["%s: %d slots"]:format(st.quiverName or (st.kind == "arrow" and L["Quiver"] or L["Ammo pouch"]),
+            st.quiverSlots), 0.7, 0.7, 0.7)
+    else
+        GameTooltip:AddLine(st.kind == "arrow" and L["No quiver: counting 2 stacks as full."]
+            or L["No ammo pouch: counting 2 stacks as full."], 0.7, 0.7, 0.7, true)
+    end
+    local best = BestKnownAmmo(st.kind)
+    if best and st.main and best ~= st.main and BetterAmmo(best, st.main) then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["Better ammo for your level:"], 1, 0.82, 0)
+        GameTooltip:AddLine(ItemText(best))
+    end
+    if merchantOpen then
+        GameTooltip:AddLine(" ")
+        if ammoOffer and ammoOffer.amount > 0 then
+            GameTooltip:AddLine(L["This vendor sells:"], 0.4, 1, 0.4)
+            GameTooltip:AddLine(ItemText(ammoOffer.id))
+            GameTooltip:AddLine(L["Left-click: buy %d for %s"]:format(ammoOffer.amount, MoneyText(ammoOffer.cost)), 0.4, 1, 0.4)
+        elseif ammoOffer then
+            GameTooltip:AddLine(L["Nothing to buy: your quiver is full or you need more gold."], 0.7, 0.7, 0.7, true)
+        else
+            GameTooltip:AddLine(L["This vendor has no ammo for you."], 0.7, 0.7, 0.7)
+        end
+    end
+    GameTooltip:Show()
+end)
+
 petButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
     local state, text = PetStatus()
@@ -750,6 +1075,7 @@ local buttons = {
     { key = "kits",  button = kitButton },
     { key = "boost", button = boostButton },
     { key = "scrolls", button = scrollButton },
+    { key = "ammo",  button = ammoButton },
     { key = "pet",   button = petButton, hunterOnly = true },
 }
 
@@ -866,6 +1192,24 @@ local function Update()
         scrollButton.timer:SetTextColor(1, 1, 1)
     end
 
+    -- ammo: count in the icon; at a vendor "+N" and a click buys
+    local ammo = AmmoStatus(ammoOffer and ammoOffer.id)
+    ammoButton.empty = ammo == nil
+    if ammo then
+        if merchantOpen and ammoOffer and ammoOffer.amount > 0 then
+            SetState(ammoButton, "warn", ammoOffer.id)
+            ammoButton.timer:SetText("+" .. ShortCount(ammoOffer.amount))
+            ammoButton.timer:SetTextColor(0.4, 1, 0.4)
+        else
+            local state = (ammo.count < 200 or ammo.ratio < 0.15) and "missing" or ammo.ratio < 0.5 and "warn" or "ok"
+            SetState(ammoButton, state, ammo.main)
+            ammoButton.timer:SetText(ShortCount(ammo.count))
+            if state == "missing" then ammoButton.timer:SetTextColor(1, 0.3, 0.3)
+            elseif state == "warn" then ammoButton.timer:SetTextColor(1, 0.82, 0)
+            else ammoButton.timer:SetTextColor(1, 1, 1) end
+        end
+    end
+
     -- pet
     SetState(petButton, (PetStatus()))
 
@@ -885,7 +1229,7 @@ local function Update()
 end
 
 local updateQueued = false
-local function QueueUpdate()
+function QueueUpdate()
     if updateQueued then return end
     updateQueued = true
     C_Timer.After(0.3, function()
@@ -900,7 +1244,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(330, 360)
+settings:SetSize(330, 386)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -955,9 +1299,10 @@ AddCheck(L["Show food"], -50, ShowToggle("food"))
 AddCheck(L["Show armor kits"], -76, ShowToggle("kits"))
 AddCheck(L["Show agility elixir / scroll"], -102, ShowToggle("boost"))
 AddCheck(L["Show stat scrolls"], -128, ShowToggle("scrolls"))
-local petCheck = AddCheck(L["Show pet"], -154, ShowToggle("pet"))
-local aspectCheck = AddCheck(L["Aspect reminder"], -180, ShowToggle("aspect"))
-AddCheck(L["Lock bar"], -212,
+AddCheck(L["Show ammo"], -154, ShowToggle("ammo"))
+local petCheck = AddCheck(L["Show pet"], -180, ShowToggle("pet"))
+local aspectCheck = AddCheck(L["Aspect reminder"], -206, ShowToggle("aspect"))
+AddCheck(L["Lock bar"], -238,
     function() return db.locked end,
     function(on) db.locked = on or nil end)
 
@@ -1343,9 +1688,11 @@ end)
 -- settings, shift + right-click the database at that icon's list.
 for _, e in ipairs(buttons) do
     local b = e.button
-    b:RegisterForClicks("RightButtonUp")
+    b:RegisterForClicks(e.key == "ammo" and "AnyUp" or "RightButtonUp")
     b:SetScript("OnClick", function(_, mouse)
-        if mouse == "RightButton" then
+        if mouse == "LeftButton" and e.key == "ammo" then
+            BuyAmmo()
+        elseif mouse == "RightButton" then
             if IsShiftKeyDown() then ToggleDB(ICON_TAB[e.key]) else ToggleSettings() end
         end
     end)
@@ -1457,6 +1804,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
         self:RegisterEvent("BAG_UPDATE_DELAYED")
         self:RegisterEvent("MERCHANT_SHOW")
+        self:RegisterEvent("MERCHANT_CLOSED")
+        self:RegisterEvent("MERCHANT_UPDATE")
         self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
         self:RegisterEvent("UNIT_PET")
         self:RegisterEvent("UNIT_HEALTH")
@@ -1496,10 +1845,21 @@ events:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "BAG_UPDATE_DELAYED" then
         ScanBags()
+        if merchantOpen and not buying then ScanMerchantAmmo() end
         QueueUpdate()
 
     elseif event == "MERCHANT_SHOW" then
+        merchantOpen = true
         ScanMerchant()
+        ScanMerchantAmmo()
+        QueueUpdate()
+
+    elseif event == "MERCHANT_UPDATE" then
+        if not buying then ScanMerchantAmmo() end
+        QueueUpdate()
+
+    elseif event == "MERCHANT_CLOSED" then
+        merchantOpen, ammoOffer = false, nil
         QueueUpdate()
 
     elseif event == "PLAYER_LEVEL_UP" then
@@ -1517,7 +1877,7 @@ end)
 -- Slash commands
 ----------------------------------------------------------------------
 
-local TOGGLE_KEYS = { food = true, kits = true, boost = true, scrolls = true, pet = true, aspect = true }
+local TOGGLE_KEYS = { food = true, kits = true, boost = true, scrolls = true, ammo = true, pet = true, aspect = true }
 
 SLASH_SQUAREDAWAY1 = "/sqa"
 SLASH_SQUAREDAWAY2 = "/squared"
@@ -1538,6 +1898,16 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print(L["position reset."])
     elseif cmd == "config" or cmd == "settings" then
         ToggleSettings()
+    elseif cmd == "ammo" then
+        local n = tonumber(arg)
+        if n and n >= 0 then
+            db.ammoStacks = n > 0 and math.floor(n) or nil
+            Print(n > 0 and L["ammo: carry %d stacks."]:format(math.floor(n)) or L["ammo: fill the quiver."])
+            if merchantOpen then ScanMerchantAmmo() end
+            Update()
+        else
+            Print(L["use: /sqa ammo <stacks>  (0 = fill the quiver)"])
+        end
     elseif cmd == "db" or cmd == "database" then
         ToggleDB(ICON_TAB[arg])
     elseif cmd == "hide" or cmd == "show" then
@@ -1546,7 +1916,7 @@ SlashCmdList.SQUAREDAWAY = function(msg)
             Print((cmd == "hide" and L["%s hidden."] or L["%s shown."]):format(arg))
             Update()
         else
-            Print(L["use: /sqa %s food | kits | boost | scrolls | pet | aspect"]:format(cmd))
+            Print(L["use: /sqa %s food | kits | boost | scrolls | ammo | pet | aspect"]:format(cmd))
         end
     elseif cmd == "list" then
         local counts = { food = 0, kit = 0, boost = 0, scroll = 0 }
@@ -1571,6 +1941,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print(L["missing kits: %s"]:format(#missing > 0 and table.concat(missing, ", ") or L["none"]))
         Print(L["weaker kits: %s"]:format(#weaker > 0 and table.concat(weaker, ", ") or L["none"]))
         Print(L["Well Fed: %s, agility boost: %s"]:format(IsWellFed() and L["yes"] or L["no"], ActiveBoost() and L["yes"] or L["no"]))
+        local ammo = AmmoStatus()
+        if ammo then Print(L["ammo: %d / %d"]:format(ammo.count, ammo.capacity)) end
         if isHunter then
             Print(L["pet: %s"]:format(select(2, PetStatus())))
             Print(L["aspect: %s"]:format(ActiveAspect() and L["active"] or (KnowsAspect() and L["none active"] or L["none learned yet"])))
@@ -1581,7 +1953,8 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print(L["  /sqa list    what I know and suggest"])
         Print(L["  /sqa db      database of known food, kits, elixirs and scrolls"])
         Print(L["               (/sqa db food | kits | boost | scrolls opens that list)"])
-        Print(L["  /sqa hide | show food | kits | boost | scrolls | pet | aspect"])
+        Print(L["  /sqa hide | show food | kits | boost | scrolls | ammo | pet | aspect"])
+        Print(L["  /sqa ammo N  carry N stacks of ammo (0 = fill the quiver)"])
         Print(L["  /sqa lock | unlock    stop or allow dragging"])
         Print(L["  /sqa reset   move icons back to the middle"])
     end

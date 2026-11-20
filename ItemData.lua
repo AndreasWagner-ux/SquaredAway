@@ -129,4 +129,33 @@ ns.ITEMS = {
     [10308] = { kind = "scroll", stat = "intellect", lvl = 50, ilvl = 60, amount = 16, spell = 12176 }, -- Scroll of Intellect IV
     [10307] = { kind = "scroll", stat = "stamina", lvl = 50, ilvl = 60, amount = 16, spell = 12178 }, -- Scroll of Stamina IV
     [10310] = { kind = "scroll", stat = "strength", lvl = 55, ilvl = 65, amount = 17, spell = 12179 }, -- Scroll of Strength IV
+    -- ammo
+    [3465] = { kind = "ammo", sub = "bullet", lvl = 0, ilvl = 36 }, -- Exploding Shot
+    [3464] = { kind = "ammo", sub = "arrow", lvl = 0, ilvl = 35 }, -- Feathered Arrow
+    [4960] = { kind = "ammo", sub = "bullet", lvl = 0, ilvl = 7 }, -- Flash Pellet
+    [2516] = { kind = "ammo", sub = "bullet", lvl = 1, ilvl = 5 }, -- Light Shot
+    [2512] = { kind = "ammo", sub = "arrow", lvl = 1, ilvl = 5 }, -- Rough Arrow
+    [8067] = { kind = "ammo", sub = "bullet", lvl = 5, ilvl = 10 }, -- Crafted Light Shot
+    [2519] = { kind = "ammo", sub = "bullet", lvl = 10, ilvl = 15 }, -- Heavy Shot
+    [2515] = { kind = "ammo", sub = "arrow", lvl = 10, ilvl = 15 }, -- Sharp Arrow
+    [5568] = { kind = "ammo", sub = "bullet", lvl = 13, ilvl = 18 }, -- Smooth Pebble
+    [8068] = { kind = "ammo", sub = "bullet", lvl = 15, ilvl = 20 }, -- Crafted Heavy Shot
+    [3030] = { kind = "ammo", sub = "arrow", lvl = 25, ilvl = 30 }, -- Razor Arrow
+    [3033] = { kind = "ammo", sub = "bullet", lvl = 25, ilvl = 30 }, -- Solid Shot
+    [8069] = { kind = "ammo", sub = "bullet", lvl = 30, ilvl = 35 }, -- Crafted Solid Shot
+    [9399] = { kind = "ammo", sub = "arrow", lvl = 35, ilvl = 40 }, -- Precision Arrow
+    [10579] = { kind = "ammo", sub = "arrow", lvl = 37, ilvl = 42 }, -- Explosive Arrow
+    [10512] = { kind = "ammo", sub = "bullet", lvl = 37, ilvl = 42 }, -- Hi-Impact Mithril Slugs
+    [11284] = { kind = "ammo", sub = "bullet", lvl = 40, ilvl = 45 }, -- Accurate Slugs
+    [11285] = { kind = "ammo", sub = "arrow", lvl = 40, ilvl = 45 }, -- Jagged Arrow
+    [10513] = { kind = "ammo", sub = "bullet", lvl = 44, ilvl = 49 }, -- Mithril Gyro-Shot
+    [11630] = { kind = "ammo", sub = "bullet", lvl = 47, ilvl = 52 }, -- Rockshard Pellets
+    [19316] = { kind = "ammo", sub = "arrow", lvl = 51, ilvl = 54 }, -- Ice Threaded Arrow
+    [19317] = { kind = "ammo", sub = "bullet", lvl = 51, ilvl = 54 }, -- Ice Threaded Bullet
+    [18042] = { kind = "ammo", sub = "arrow", lvl = 52, ilvl = 57 }, -- Thorium Headed Arrow
+    [15997] = { kind = "ammo", sub = "bullet", lvl = 52, ilvl = 57 }, -- Thorium Shells
+    [12654] = { kind = "ammo", sub = "arrow", lvl = 54, ilvl = 59 }, -- Doomshot
+    [13377] = { kind = "ammo", sub = "bullet", lvl = 56, ilvl = 61 }, -- Miniature Cannon Balls
+    [274387] = { kind = "ammo", sub = "arrow", lvl = 60, ilvl = 65 }, -- Swiftfeather Arrow
+    [274388] = { kind = "ammo", sub = "bullet", lvl = 60, ilvl = 65 }, -- Swiftstrike Shot
 }

@@ -12,9 +12,12 @@ A small reminder bar for **WoW Forever**. It shows at a glance whether you are r
 | Armor kits | Kit on chest, legs, hands and feet | A slot has a weaker kit than you could use | A slot has no kit |
 | Agility (elixir or scroll) | Agility elixir or scroll active, with countdown | | None active |
 | Stat scrolls | Stamina, Strength, Protection and Intellect scrolls all active (count in the icon, e.g. 4/4) | Some active | None active |
+| Ammo (bow, crossbow, gun) | Quiver at least half full (count in the icon) | Under half full | Under 200, or under 15% |
 | Pet (hunters) | Summoned and happy | Content | Unhappy, dead or not summoned |
 
 **Aspect reminder (hunters):** while no aspect is active, a flashing "No aspect active!" appears in the middle of the screen, in and out of combat, until you choose one. It stays away while you are dead or on a flight path, and before you have learned your first aspect. Switch it off in the settings or with `/sqa hide aspect`.
+
+**Ammo:** the icon shows how many arrows or bullets you carry and how full your quiver or ammo pouch is. Hover it for the ammo you use, its damage per second, and better ammo for your level. At a vendor that sells ammo for your weapon, the icon shows **+N**: left-click it to buy the best ammo the vendor has for your level, enough to fill the free quiver slots (whole stacks, never more than your gold allows). Without a quiver, two stacks count as full. `/sqa ammo 4` carries 4 stacks instead, `/sqa ammo 0` fills the quiver again.
 
 Agility scrolls are not part of the stat scrolls icon: they share the agility icon with agility elixirs, because the two do not stack.
 
@@ -22,7 +25,7 @@ Hover over an icon to see the best food, kit or elixir/scroll for your level and
 
 **Stat scrolls:** Stamina, Strength, Protection and Intellect scrolls each give their own buff. The icon counts how many of them are active (for example 2/4), and the tooltip names each missing one and tells you whether you carry a scroll for it. A stat already covered by a class buff (Power Word: Fortitude, Arcane Intellect) counts as done. The icon only appears once you know at least one such scroll.
 
-The icons hide in combat. Squared Away never buys or uses anything. It only reminds you.
+The icons hide in combat. Squared Away never buys or uses anything by itself. The only purchase happens when you left-click the ammo icon at a vendor.
 
 ## Languages
 
@@ -55,7 +58,8 @@ Commands:
 | `/sqa config` | Open the settings |
 | `/sqa list` | Show what the addon knows and suggests |
 | `/sqa db` | Open the database (`/sqa db food`, `kits`, `boost` or `scrolls` opens that list) |
-| `/sqa hide food`, `kits`, `boost`, `scrolls`, `pet`, `aspect` | Hide an icon or the aspect reminder (`/sqa show ...` brings it back) |
+| `/sqa hide food`, `kits`, `boost`, `scrolls`, `ammo`, `pet`, `aspect` | Hide an icon or the aspect reminder (`/sqa show ...` brings it back) |
+| `/sqa ammo N` | Carry N stacks of ammo (0 = fill the quiver) |
 | `/sqa lock`, `/sqa unlock` | Stop or allow dragging |
 | `/sqa reset` | Move the bar back to the middle |
 

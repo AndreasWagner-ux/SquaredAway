@@ -171,6 +171,21 @@ def main():
             if score > 0:
                 out[iid] = (i, dict(base, kind="food", score=score))
 
+    # 6. arrows and bullets (class 6 = Projectile); damage comes from the game
+    offset = 0
+    while True:
+        page = get("items?class=6&limit=100&offset=%d" % offset)
+        for i in page["data"]:
+            if i.get("speculation") or i["name"].startswith("Depricated"):
+                continue
+            sub = {"Arrow": "arrow", "Bullet": "bullet"}.get(i["subclass"])
+            if sub:
+                out[i["id"]] = (i, {"kind": "ammo", "sub": sub,
+                                    "lvl": i.get("requiredLevel") or 0, "ilvl": i.get("itemLevel") or 0})
+        if not page["meta"].get("next"):
+            break
+        offset += 100
+
     write(build, out)
     counts = {}
     for _, f in out.values():
@@ -187,7 +202,7 @@ def lua_value(v):
 
 
 ORDER = ("kind", "sub", "stat", "lvl", "ilvl", "score", "amount", "armor", "minIlvl", "caster", "spell")
-KIND_ORDER = {"food": 0, "kit": 1, "boost": 2, "scroll": 3}
+KIND_ORDER = {"food": 0, "kit": 1, "boost": 2, "scroll": 3, "ammo": 4}
 
 
 def write(build, out):
