@@ -1451,7 +1451,7 @@ end
 
 local settings = CreateFrame("Frame", "SquaredAwaySettings", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-settings:SetSize(400, 584)
+settings:SetSize(400, 616)
 settings:SetPoint("CENTER")
 settings:SetFrameStrata("DIALOG")
 settings:SetMovable(true)
@@ -1705,12 +1705,21 @@ sep:SetColorTexture(0.22, 0.26, 0.32, 1)
 sep:SetHeight(1)
 sep:SetPoint("TOPLEFT", 18, -480)
 sep:SetPoint("TOPRIGHT", -18, -480)
-local dbBtn = FlatButton(settings, L["Database"], 116)
+local dbBtn = FlatButton(settings, L["Database"], 175)
 dbBtn:SetPoint("TOPLEFT", 18, -494)
-local shopBtn = FlatButton(settings, L["Shopping list"], 116)
-shopBtn:SetPoint("TOP", 0, -494)
-local statusBtn = FlatButton(settings, L["Status in chat"], 116)
-statusBtn:SetPoint("TOPRIGHT", -18, -494)
+local shopBtn = FlatButton(settings, L["Shopping list"], 175)
+shopBtn:SetPoint("TOPRIGHT", -18, -494)
+do
+    local infoBtn = FlatButton(settings, L["Info"], 175)
+    infoBtn:SetPoint("TOPLEFT", 18, -526)
+    infoBtn:SetScript("OnClick", function()
+        if not db then return end
+        settings:Hide()
+        if ns.ToggleInfo then ns.ToggleInfo() end
+    end)
+end
+local statusBtn = FlatButton(settings, L["Status in chat"], 175)
+statusBtn:SetPoint("TOPRIGHT", -18, -526)
 statusBtn:SetScript("OnClick", function() if db and PrintStatus then PrintStatus() end end)
 
 -- footer
@@ -2582,6 +2591,200 @@ function ToggleDB(tab)
 end
 end -- database window
 
+----------------------------------------------------------------------
+-- Info window (/sqa info, "Info" button in the settings): what each icon
+-- on the bar means. Built the first time it opens.
+----------------------------------------------------------------------
+do
+    local YELLOW = "|cffffd100"
+    local RED = "|cffff4040"
+    local INFO = {
+        { key = "food", name = L["Food"],
+          text = L["Shows whether you are Well Fed and how many minutes are left. Hover for the best food for your level and how many you carry."],
+          red = L["not Well Fed."] },
+        { key = "kits", name = L["Armor kits"],
+          text = L["Checks chest, legs, hands and feet. Hover to see which slot needs a kit."],
+          yellow = L["a slot has a weaker kit than you could use."],
+          red = L["a slot has no kit."] },
+        { key = "boost", name = L["Agility"],
+          text = L["An agility elixir or scroll, with countdown. The two do not stack, so only one is suggested."],
+          red = L["none active."] },
+        { key = "scrolls", name = L["Stat buffs"],
+          text = L["Stamina, Strength, Armor and Intellect, each from a scroll or an elixir. The icon counts them, for example 3/4. Fortitude and Arcane Intellect from other players count too."],
+          yellow = L["some active."],
+          red = L["none active."] },
+        { key = "ammo", name = L["Ammo"],
+          text = L["Arrows or bullets you carry and how full your quiver is. At a vendor the icon shows +N: left-click buys the best ammo for your level to fill the quiver."],
+          yellow = L["under half full, or no quiver."],
+          red = L["under 200, or under 15%."] },
+        { key = "stone", name = L["Sharpening stone"],
+          text = L["Sharpening stone or weightstone on your melee weapon, with countdown. Off by default: switch it on in the settings."],
+          red = L["none on the weapon."] },
+        { key = "pet", name = L["Pet"],
+          text = L["Your pet's mood."],
+          yellow = L["content."],
+          red = L["unhappy, dead or not summoned."] },
+    }
+    local W, H = 420, 560
+    local TEXT_W = W - 36 - 24 - 44 -- margins, scroll bar, icon
+
+    local win = CreateFrame("Frame", "SquaredAwayInfo", UIParent,
+        BackdropTemplateMixin and "BackdropTemplate" or nil)
+    win:SetSize(W, H)
+    win:SetPoint("CENTER")
+    win:SetFrameStrata("DIALOG")
+    win:SetMovable(true)
+    win:EnableMouse(true)
+    win:RegisterForDrag("LeftButton")
+    win:SetScript("OnDragStart", win.StartMoving)
+    win:SetScript("OnDragStop", win.StopMovingOrSizing)
+    win:SetClampedToScreen(true)
+    Flat(win, { 0.06, 0.07, 0.09, 0.97 }, { 0.22, 0.26, 0.32, 1 })
+    win:Hide()
+    tinsert(UISpecialFrames, "SquaredAwayInfo") -- Escape closes it
+
+    local bar = win:CreateTexture(nil, "ARTWORK")
+    bar:SetColorTexture(0.10, 0.12, 0.15, 1)
+    bar:SetPoint("TOPLEFT", 1, -1)
+    bar:SetPoint("TOPRIGHT", -1, -1)
+    bar:SetHeight(36)
+    local line = win:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.7)
+    line:SetPoint("TOPLEFT", bar, "BOTTOMLEFT")
+    line:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT")
+    line:SetHeight(1)
+    local t = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    t:SetPoint("LEFT", bar, "LEFT", 14, 0)
+    t:SetTextColor(1, 1, 1)
+    t:SetText("Squared Away")
+    local sub = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    sub:SetPoint("LEFT", t, "RIGHT", 8, -1)
+    sub:SetText(L["Info"])
+
+    local x = CreateFrame("Button", nil, win)
+    x:SetSize(28, 28)
+    x:SetPoint("RIGHT", bar, "RIGHT", -6, 0)
+    x.text = x:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    x.text:SetPoint("CENTER")
+    x.text:SetText("X")
+    x.text:SetTextColor(0.6, 0.6, 0.6)
+    x:SetScript("OnEnter", function(self) self.text:SetTextColor(1, 1, 1) end)
+    x:SetScript("OnLeave", function(self) self.text:SetTextColor(0.6, 0.6, 0.6) end)
+    x:SetScript("OnClick", function() win:Hide() end)
+
+    -- legend: the three marks
+    local legend = {
+        { CHECK, L["done"] },
+        { WARN, L["could be better"] },
+        { CROSS, L["missing"] },
+    }
+    local lx = 18
+    for _, e in ipairs(legend) do
+        local tex = win:CreateTexture(nil, "OVERLAY")
+        tex:SetSize(16, 16)
+        tex:SetTexture(e[1])
+        tex:SetPoint("TOPLEFT", lx, -48)
+        local fs = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetPoint("LEFT", tex, "RIGHT", 4, 0)
+        fs:SetText(e[2])
+        lx = lx + 20 + math.max(60, fs:GetStringWidth()) + 16
+    end
+    local sep = win:CreateTexture(nil, "ARTWORK")
+    sep:SetColorTexture(0.22, 0.26, 0.32, 1)
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", 18, -72)
+    sep:SetPoint("TOPRIGHT", -18, -72)
+
+    -- footer
+    local foot = win:CreateTexture(nil, "ARTWORK")
+    foot:SetColorTexture(0.10, 0.12, 0.15, 1)
+    foot:SetPoint("BOTTOMLEFT", 1, 1)
+    foot:SetPoint("BOTTOMRIGHT", -1, 1)
+    foot:SetHeight(46)
+    local hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("LEFT", foot, "LEFT", 14, 0)
+    hint:SetPoint("RIGHT", foot, "RIGHT", -14, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText(L["The bar hides in combat. Hover an icon for suggestions, right-click for the settings, shift + right-click for the database."])
+
+    local sf = CreateFrame("ScrollFrame", "SquaredAwayInfoScroll", win, "UIPanelScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", 18, -80)
+    sf:SetPoint("BOTTOMRIGHT", -40, 54)
+    local body = CreateFrame("Frame", nil, sf)
+    body:SetSize(W - 58, 1)
+    sf:SetScrollChild(body)
+
+    local rowsBuilt
+    local function Build()
+        local y = -4
+        for i, e in ipairs(INFO) do
+            local b
+            for _, bb in ipairs(buttons) do if bb.key == e.key then b = bb.button end end
+            local icon = body:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(32, 32)
+            icon:SetPoint("TOPLEFT", 0, y)
+            icon:SetTexture((b and (b.icon:GetTexture() or b.fallback)) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            e.icon, e.button = icon, b
+            local name = body:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 0)
+            name:SetTextColor(1, 1, 1)
+            e.nameFS = name
+            local text = body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            text:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -3)
+            text:SetWidth(TEXT_W)
+            text:SetJustifyH("LEFT")
+            text:SetSpacing(2)
+            local s = e.text
+            if e.yellow then s = s .. "\n" .. YELLOW .. L["Yellow:"] .. "|r " .. e.yellow end
+            if e.red then s = s .. "\n" .. RED .. L["Red:"] .. "|r " .. e.red end
+            text:SetText(s)
+            text:SetTextColor(0.72, 0.76, 0.82)
+            local h = math.max(32, 14 + 3 + text:GetStringHeight())
+            y = y - h - 12
+            if i < #INFO then
+                local l = body:CreateTexture(nil, "ARTWORK")
+                l:SetColorTexture(0.14, 0.16, 0.20, 1)
+                l:SetHeight(1)
+                l:SetPoint("TOPLEFT", 0, y + 6)
+                l:SetPoint("TOPRIGHT", 0, y + 6)
+            end
+        end
+        -- aspect reminder box
+        local box = CreateFrame("Frame", nil, body, BackdropTemplateMixin and "BackdropTemplate" or nil)
+        Flat(box, { 0.08, 0.09, 0.12, 1 }, { 0.22, 0.26, 0.32, 1 })
+        box:SetPoint("TOPLEFT", 0, y - 4)
+        box:SetWidth(W - 62)
+        local a = box:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        a:SetPoint("TOP", 0, -10)
+        a:SetTextColor(1, 0.25, 0.25)
+        a:SetText(L["No aspect active!"])
+        local ad = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ad:SetPoint("TOP", a, "BOTTOM", 0, -6)
+        ad:SetWidth(W - 90)
+        ad:SetTextColor(0.72, 0.76, 0.82)
+        ad:SetText(L["Flashes in the middle of the screen until you choose an aspect, also in combat. Stays away on flights and while you are dead."])
+        local bh = 10 + 18 + 6 + ad:GetStringHeight() + 12
+        box:SetHeight(bh)
+        body:SetHeight(-(y - 4) + bh + 8)
+        rowsBuilt = true
+    end
+
+    win:SetScript("OnShow", function()
+        if not rowsBuilt then Build() end
+        for _, e in ipairs(INFO) do
+            local b = e.button
+            if b then e.icon:SetTexture(b.icon:GetTexture() or b.fallback) end
+            local on = Shown(e.key)
+            e.nameFS:SetText(e.name .. (on and "" or ("  |cff6b7480" .. L["(off)"] .. "|r")))
+            e.icon:SetDesaturated(not on)
+        end
+    end)
+
+    ns.ToggleInfo = function()
+        if win:IsShown() then win:Hide() else win:Show() end
+    end
+end
+
 dbBtn:SetScript("OnClick", function()
     if not db then return end
     settings:Hide()
@@ -2904,12 +3107,15 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         end
     elseif cmd == "list" or cmd == "status" then
         PrintStatus()
+    elseif cmd == "info" then
+        ns.ToggleInfo()
     elseif cmd == "help" then
         Print(L["commands:"])
         Print(L["  /sqa config  open the settings (or right-click an icon)"])
         Print(L["  /sqa list    what I know and suggest"])
         Print(L["  /sqa db      database of known food, kits, elixirs and scrolls"])
         Print(L["               (/sqa db food | kits | boost | scrolls opens that list)"])
+        Print(L["  /sqa info    what the icons mean"])
         Print(L["  /sqa hide | show food | kits | boost | scrolls | ammo | stone | pet | aspect"])
         Print(L["  /sqa ammo N  carry N stacks of ammo (0 = fill the quiver)"])
         Print(L["  /sqa lock | unlock    stop or allow dragging"])
@@ -2922,6 +3128,7 @@ SlashCmdList.SQUAREDAWAY = function(msg)
         Print(L["  /sqa list    what I know and suggest"])
         Print(L["  /sqa db      database of known food, kits, elixirs and scrolls"])
         Print(L["               (/sqa db food | kits | boost | scrolls opens that list)"])
+        Print(L["  /sqa info    what the icons mean"])
         Print(L["  /sqa hide | show food | kits | boost | scrolls | ammo | stone | pet | aspect"])
         Print(L["  /sqa ammo N  carry N stacks of ammo (0 = fill the quiver)"])
         Print(L["  /sqa lock | unlock    stop or allow dragging"])
