@@ -2188,6 +2188,78 @@ do
     shop.sellMore:SetPoint("TOPLEFT", 18, -560)
 end
 
+-- Sell everything on the sell list to the open vendor, one slot at a time.
+-- Items without a vendor price stay in the bags (for the auction house).
+do
+    local selling = false
+    local function SellPrice(id) return select(11, GetItemInfoFn(id)) or 0 end
+    local function SellableSlots()
+        local list = BuildShoppingList()
+        local want = {}
+        for _, l in ipairs((list and list.sell) or {}) do want[l.id] = true end
+        local slots, items, copper = {}, 0, 0
+        for bag = 0, 4 do
+            for slot = 1, NumSlots(bag) do
+                local id, count = SlotInfo(bag, slot)
+                if id and want[id] and SellPrice(id) > 0 then
+                    slots[#slots + 1] = { bag = bag, slot = slot, id = id }
+                    items = items + (count or 1)
+                    copper = copper + SellPrice(id) * (count or 1)
+                end
+            end
+        end
+        return slots, items, copper
+    end
+
+    local function SellAll()
+        if selling or not merchantOpen or not db then return end
+        local slots = SellableSlots()
+        if #slots == 0 then return end
+        selling = true
+        local use = (C_Container and C_Container.UseContainerItem) or UseContainerItem
+        local i = 0
+        local function Next()
+            i = i + 1
+            local e = slots[i]
+            if not e or not merchantOpen then
+                selling = false
+                C_Timer.After(0.5, function() if shop:IsShown() then shop:Refresh() end end)
+                return
+            end
+            if SlotInfo(e.bag, e.slot) == e.id then use(e.bag, e.slot) end
+            C_Timer.After(0.2, Next)
+        end
+        Next()
+    end
+
+    StaticPopupDialogs["SQUAREDAWAY_SELL"] = {
+        text = "%s",
+        button1 = L["Sell"],
+        button2 = CANCEL or "Cancel",
+        OnAccept = SellAll,
+        timeout = 0,
+        whileDead = false,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+
+    local btn = FlatButton(shop, L["Sell all at vendor"], 150)
+    btn:SetHeight(22)
+    btn:SetPoint("TOPRIGHT", -18, -556)
+    btn:SetScript("OnClick", function()
+        if selling or not merchantOpen or not db then return end
+        local slots, items, copper = SellableSlots()
+        if #slots == 0 then
+            Print(L["Nothing on the sell list that this vendor buys."])
+            return
+        end
+        StaticPopup_Show("SQUAREDAWAY_SELL", L["Sell %d items from the sell list to this vendor for %s?"]:format(items, MoneyText(copper))
+            .. "\n\n" .. L["Items without a vendor price stay in your bags for the auction house."])
+    end)
+    shop.sellBtn = btn
+    shop.SellableSlots = SellableSlots
+end
+
 -- recipient and mail button
 local mailLabel = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 mailLabel:SetPoint("BOTTOMLEFT", 18, 84)
@@ -2308,6 +2380,10 @@ function shop:Refresh()
         end
     end
     shop.sellEmpty:SetShown(list ~= nil and #sell == 0)
+    local canSell = db ~= nil and merchantOpen and #sell > 0
+    shop.sellBtn:SetShown(db ~= nil)
+    shop.sellBtn:SetEnabled(canSell)
+    shop.sellBtn:SetAlpha(canSell and 1 or 0.5)
     shop.sellMore:SetText(#sell > #shop.sellRows and L["(%d more)"]:format(#sell - #shop.sellRows) or "")
     shop.targets:SetShown(db ~= nil)
     if db then for _, st in ipairs(shop.steppers) do st:Refresh() end end
@@ -2362,6 +2438,15 @@ function ShopEvent(event)
             shop.part = shop.part + 1
             mailNote:SetText(L["Part %d of %d: press Fill mail again."]:format(shop.part, #shop.parts))
         end
+    elseif event == "MERCHANT_SHOW" then
+        if db and #(shop.SellableSlots()) > 0 then
+            ShopAutoOpen(MerchantFrame)
+        elseif shop:IsShown() then
+            shop:Refresh()
+        end
+    elseif event == "MERCHANT_CLOSED" then
+        if shop:IsShown() then shop:Refresh() end
+        ShopAutoClose()
     elseif event == "AUCTION_HOUSE_SHOW" then
         ShopAutoOpen(AuctionHouseFrame or AuctionFrame)
     elseif event == "AUCTION_HOUSE_CLOSED" then
@@ -3153,6 +3238,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
         ScanMerchant()
         ScanMerchantAmmo()
         QueueUpdate()
+        ShopEvent(event)
 
     elseif event == "MERCHANT_UPDATE" then
         if not buying then ScanMerchantAmmo() end
@@ -3161,6 +3247,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "MERCHANT_CLOSED" then
         merchantOpen, ammoOffer = false, nil
         QueueUpdate()
+        ShopEvent(event)
 
     elseif event == "PLAYER_LEVEL_UP" then
         C_Timer.After(1, function()

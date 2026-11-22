@@ -246,4 +246,10 @@ if locale == "deDE" then
     L["Nothing to sell."] = "Nichts zu verkaufen."
     L["(no use)"] = "(nutzlos)"
     L["(%d more)"] = "(%d weitere)"
+    -- sell at vendor
+    L["Sell"] = "Verkaufen"
+    L["Sell all at vendor"] = "Alles beim Händler verkaufen"
+    L["Nothing on the sell list that this vendor buys."] = "Nichts auf der Verkaufsliste, das dieser Händler kauft."
+    L["Sell %d items from the sell list to this vendor for %s?"] = "%d Gegenstände von der Verkaufsliste für %s an diesen Händler verkaufen?"
+    L["Items without a vendor price stay in your bags for the auction house."] = "Gegenstände ohne Händlerpreis bleiben für das Auktionshaus in deinen Taschen."
 end

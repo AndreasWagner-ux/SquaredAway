@@ -39,7 +39,7 @@ The list is saved for your whole account. Log in with your auction house charact
 
 Open it with the Shopping list button in the settings or `/sqa shop`.
 
-**Sell:** below the shopping list, Squared Away lists buff items in your bags that you no longer need: food, elixirs, scrolls, stones and armor kits weaker than what you should use at your level, and items that are of no use to a hunter (marked "no use"). Sell them at a vendor or the auction house.
+**Sell:** below the shopping list, Squared Away lists buff items in your bags that you no longer need: food, elixirs, scrolls, stones and armor kits weaker than what you should use at your level, and items that are of no use to a hunter (marked "no use"). Sell them at a vendor or the auction house. With a vendor open, the "Sell all at vendor" button sells everything on the sell list after a confirmation that shows the total. Items without a vendor price stay in your bags for the auction house. At a vendor the list opens by itself when there is something to sell.
 
 ## Languages
 
