@@ -239,4 +239,11 @@ if locale == "deDE" then
     L["unhappy, dead or not summoned."] = "unglücklich, tot oder nicht gerufen."
     L["Flashes in the middle of the screen until you choose an aspect, also in combat. Stays away on flights and while you are dead."] = "Blinkt in der Bildschirmmitte, bis du einen Aspekt wählst, auch im Kampf. Bleibt weg während eines Flugs und solange du tot bist."
     L["The bar hides in combat. Hover an icon for suggestions, right-click for the settings, shift + right-click for the database."] = "Im Kampf ist die Leiste ausgeblendet. Maus über ein Symbol zeigt Vorschläge, Rechtsklick öffnet die Einstellungen, Umschalt + Rechtsklick die Datenbank."
+    -- sell list (0.15.0)
+    L["Sell (vendor or auction house)"] = "Verkaufen (Händler oder Auktionshaus)"
+    L["No use for a hunter."] = "Bringt einem Jäger nichts."
+    L["Weaker than what you should use at your level."] = "Schwächer als das, was du auf deiner Stufe nutzen solltest."
+    L["Nothing to sell."] = "Nichts zu verkaufen."
+    L["(no use)"] = "(nutzlos)"
+    L["(%d more)"] = "(%d weitere)"
 end

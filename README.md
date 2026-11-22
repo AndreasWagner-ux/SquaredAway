@@ -31,13 +31,15 @@ The icons hide in combat. Squared Away never buys or uses anything by itself. Th
 
 ## Shopping list
 
-The shopping list shows what to buy at the auction house for your level: the best food, agility elixir or scroll, one item per stat buff, armor kits for slots that need one, and a sharpening stone if that icon is on. What you already carry is subtracted. Set how many of each you want to carry in the list window.
+The shopping list shows what to buy at the auction house for your level: the best food, agility elixir or scroll, one item per stat buff, armor kits for slots that need one, and a sharpening stone if that icon is on. Everything in your bags that is as good as the best item for your level is subtracted, whichever item it is (for example an agility scroll instead of an elixir with the same agility). Set how many of each you want to carry in the list window.
 
 At a mailbox, **Fill mail** puts the recipient (saved), a subject and the list into the mail form; you only press Send. Long lists are split into several mails.
 
 The list is saved for your whole account. Log in with your auction house character on the same account: the list opens by itself at the auction house and at the mailbox, and `/sqa` opens it. On characters that are not hunters, the shopping list is the only thing Squared Away shows.
 
 Open it with the Shopping list button in the settings or `/sqa shop`.
+
+**Sell:** below the shopping list, Squared Away lists buff items in your bags that you no longer need: food, elixirs, scrolls, stones and armor kits weaker than what you should use at your level, and items that are of no use to a hunter (marked "no use"). Sell them at a vendor or the auction house.
 
 ## Languages
 

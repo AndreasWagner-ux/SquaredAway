@@ -1861,9 +1861,13 @@ local function ShopTarget(key)
 end
 
 -- Builds the list for the hunter and saves it for other characters.
+-- Counts by value: everything in the bags that is as good as the best item
+-- for your level counts towards the target, not just that one item.
+-- Weaker or useless buff items go on a separate list to sell.
 local function BuildShoppingList()
     if not db then return end
-    local lines = {}
+    local level = UnitLevel("player")
+    local lines, sell = {}, {}
     local function add(id, need, merge)
         if not id or need <= 0 then return end
         for _, l in ipairs(lines) do
@@ -1874,17 +1878,110 @@ local function BuildShoppingList()
         end
         lines[#lines + 1] = { id = id, need = need, name = (GetItemInfoFn(id)) or (L["item"] .. " " .. id) }
     end
-    local function want(id, target)
-        if not id or target <= 0 then return 0 end
-        return math.max(0, target - (GetItemCountFn(id) or 0))
+
+    -- what is in the bags: id -> count
+    local bag = {}
+    do
+        local numSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+        local itemID = (C_Container and C_Container.GetContainerItemID) or GetContainerItemID
+        for b = 0, 4 do
+            for slot = 1, (numSlots(b) or 0) do
+                local id = itemID(b, slot)
+                if id and not bag[id] then bag[id] = GetItemCountFn(id) or 0 end
+            end
+        end
+    end
+    local function MinLevel(id, info)
+        local _, _, _, _, minLevel = GetItemInfoFn(id)
+        return minLevel or info.lvl or 0
+    end
+    local function Sell(id, n, useless)
+        if n > 0 then
+            sell[#sell + 1] = { id = id, count = n, useless = useless or nil,
+                name = (GetItemInfoFn(id)) or (L["item"] .. " " .. id) }
+        end
     end
 
-    add(Best("food"), want(Best("food"), ShopTarget("food")))
-    local boost = BestBoost(true)
-    add(boost, want(boost, ShopTarget("boost")))
+    -- food: same level and same use as the best food counts, weaker is sold
+    local bestFood = Best("food")
+    local foodLvl = bestFood and MinLevel(bestFood, db.items[bestFood]) or 0
+    local foodScore = bestFood and FoodScore(bestFood) or 0
+    local haveFood = 0
+    -- agility elixir or scroll: the same agility counts, whichever it is
+    local bestBoost = BestBoost(true)
+    local boostAmt = bestBoost and BoostAmount(bestBoost) or 0
+    local haveBoost = 0
+    -- stat buffs, per stat
+    local bestStat, statAmt, haveStat = {}, {}, {}
     for _, st in ipairs(ns.SCROLL_STATS) do
         local id = BestScroll(st.key, true)
-        add(id, want(id, ShopTarget("stat")), "max") -- one elixir can cover two stats
+        bestStat[st.key] = id
+        statAmt[st.key] = id and ScrollAmount(id, st.key) or 0
+        haveStat[st.key] = 0
+    end
+    -- stones: best per weapon type
+    local edge = MeleeEdge()
+    local function StoneValue(id) return AmmoLevel(id) * 1000 + (db.items[id].ilvl or 0) end
+    local bestStoneVal = {}
+    for _, e in ipairs({ "sharp", "blunt" }) do
+        local id = BestStone(e, true)
+        bestStoneVal[e] = id and StoneValue(id) or 0
+    end
+    local haveStone = 0
+    -- kits: weaker than the weakest best kit of your equipped slots is sold
+    local kitFloor
+    for _, ks in ipairs(ns.KIT_SLOTS) do
+        local link = GetInventoryItemLink("player", ks.slot)
+        if link then
+            local _, _, _, itemLevel = GetItemInfoFn(link)
+            local _, armor = BestKitFor(itemLevel)
+            if armor and (not kitFloor or armor < kitFloor) then kitFloor = armor end
+        end
+    end
+
+    for id, n in pairs(bag) do
+        local info = db.items[id]
+        if info and n > 0 and MinLevel(id, info) <= level then
+            if info.kind == "food" then
+                local score = FoodScore(id)
+                if score == 0 then
+                    Sell(id, n, true)
+                elseif bestFood and MinLevel(id, info) >= foodLvl and score >= foodScore then
+                    haveFood = haveFood + n
+                else
+                    Sell(id, n)
+                end
+            elseif info.kind == "boost" then
+                if BoostAmount(id) >= boostAmt then haveBoost = haveBoost + n else Sell(id, n) end
+            elseif info.kind == "scroll" then
+                local useful = false
+                for _, st in ipairs(ns.SCROLL_STATS) do
+                    if HasStat(info, st.key) and ScrollAmount(id, st.key) >= statAmt[st.key] then
+                        haveStat[st.key] = haveStat[st.key] + n
+                        useful = true
+                    end
+                end
+                if not useful then Sell(id, n) end
+            elseif info.kind == "stone" and info.sub then
+                if StoneValue(id) < (bestStoneVal[info.sub] or 0) then
+                    Sell(id, n)
+                elseif info.sub == edge then
+                    haveStone = haveStone + n
+                end
+            elseif info.kind == "kit" then
+                if not KitUseful(id) then
+                    Sell(id, n, true)
+                elseif kitFloor and (KitArmor(id) or 0) < kitFloor then
+                    Sell(id, n)
+                end
+            end
+        end
+    end
+
+    add(bestFood, ShopTarget("food") - haveFood)
+    add(bestBoost, ShopTarget("boost") - haveBoost)
+    for _, st in ipairs(ns.SCROLL_STATS) do
+        add(bestStat[st.key], ShopTarget("stat") - haveStat[st.key], "max") -- one elixir can cover two stats
     end
     -- armor kits: one per slot without a kit or with a weaker one
     local missing, weaker, perSlot = KitStatus()
@@ -1897,13 +1994,12 @@ local function BuildShoppingList()
     end
     for id, n in pairs(kitNeed) do add(id, math.max(0, n - (GetItemCountFn(id) or 0))) end
     -- sharpening stone, only if that icon is on
-    local edge = MeleeEdge()
     if edge and Shown("stone") then
-        local id = BestStone(edge, true)
-        add(id, want(id, ShopTarget("stone")))
+        add(BestStone(edge, true), ShopTarget("stone") - haveStone)
     end
 
-    db.shopList = { char = UnitName("player"), level = UnitLevel("player"), time = time(), lines = lines }
+    table.sort(sell, function(a, b) return a.name < b.name end)
+    db.shopList = { char = UnitName("player"), level = level, time = time(), lines = lines, sell = sell }
     return db.shopList
 end
 
@@ -1922,7 +2018,7 @@ end
 
 local shop = CreateFrame("Frame", "SquaredAwayShopping", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
-shop:SetSize(360, 520)
+shop:SetSize(360, 690)
 shop:SetPoint("CENTER", 220, 0)
 shop:SetFrameStrata("DIALOG")
 shop:SetMovable(true)
@@ -2048,6 +2144,50 @@ targetsNote:SetWidth(324)
 targetsNote:SetJustifyH("LEFT")
 targetsNote:SetText(L["Stat buffs: per stat. Armor kits: one per slot that needs one."])
 
+-- items to sell: weaker or useless buff items in the hunter's bags
+shop.sellRows = {}
+do
+    local h = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h:SetPoint("TOPLEFT", 18, -410)
+    h:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
+    h:SetText(L["Sell (vendor or auction house)"]:upper())
+    local line = shop:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.22, 0.26, 0.32, 1)
+    line:SetHeight(1)
+    line:SetPoint("LEFT", h, "RIGHT", 8, 0)
+    line:SetPoint("RIGHT", shop, "RIGHT", -18, 0)
+    shop.sellHead = h
+    for i = 1, 6 do
+        local r = CreateFrame("Button", nil, shop)
+        r:SetSize(328, 22)
+        r:SetPoint("TOPLEFT", 16, -426 - (i - 1) * 22)
+        r.icon = r:CreateTexture(nil, "ARTWORK")
+        r.icon:SetSize(18, 18)
+        r.icon:SetPoint("LEFT")
+        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+        r.name:SetWidth(250)
+        r.name:SetJustifyH("LEFT")
+        r.name:SetWordWrap(false)
+        r.need = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        r.need:SetPoint("RIGHT", -2, 0)
+        r:SetScript("OnEnter", function(self)
+            if not self.id then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink("item:" .. self.id)
+            GameTooltip:AddLine(self.useless and L["No use for a hunter."] or L["Weaker than what you should use at your level."], 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        shop.sellRows[i] = r
+    end
+    shop.sellEmpty = shop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    shop.sellEmpty:SetPoint("TOPLEFT", 18, -430)
+    shop.sellEmpty:SetText(L["Nothing to sell."])
+    shop.sellMore = shop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    shop.sellMore:SetPoint("TOPLEFT", 18, -560)
+end
+
 -- recipient and mail button
 local mailLabel = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 mailLabel:SetPoint("BOTTOMLEFT", 18, 84)
@@ -2153,6 +2293,22 @@ function shop:Refresh()
     if #lines > SHOP_ROWS then
         shop.sub:SetText(shop.sub:GetText() .. " " .. L["(%d more in the mail)"]:format(#lines - SHOP_ROWS))
     end
+    local sell = (list and list.sell) or {}
+    for i, r in ipairs(shop.sellRows) do
+        local l = sell[i]
+        r.id, r.useless = l and l.id, l and l.useless
+        if l then
+            r.icon:SetTexture(GetItemIconFn(l.id) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            local name = (GetItemInfoFn(l.id)) or l.name
+            r.name:SetText(l.useless and (name .. "  |cff8a94a3" .. L["(no use)"] .. "|r") or name)
+            r.need:SetText(l.count .. "x")
+            r:Show()
+        else
+            r:Hide()
+        end
+    end
+    shop.sellEmpty:SetShown(list ~= nil and #sell == 0)
+    shop.sellMore:SetText(#sell > #shop.sellRows and L["(%d more)"]:format(#sell - #shop.sellRows) or "")
     shop.targets:SetShown(db ~= nil)
     if db then for _, st in ipairs(shop.steppers) do st:Refresh() end end
     if not recipient:HasFocus() then recipient:SetText(d.shopRecipient or "") end
@@ -2173,7 +2329,7 @@ local function ShopAutoOpen(anchor)
     local d = SDB()
     if db then BuildShoppingList() end
     local list = d and d.shopList
-    if not list or #list.lines == 0 then return end
+    if not list or (#list.lines == 0 and #(list.sell or {}) == 0) then return end
     if not shop:IsShown() then
         shopAuto = true
         shop:ClearAllPoints()
